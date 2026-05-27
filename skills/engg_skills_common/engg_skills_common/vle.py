@@ -229,36 +229,40 @@ def rachford_rice(Ks: list[float], zs: list[float]) -> dict[str, Any]:
     zs = normalize_zs(zs)
     if any(K <= 0 for K in Ks):
         raise ValueError("all K-values must be positive")
-    Kmin = min(Ks)
-    Kmax = max(Ks)
-    if Kmax <= 1:
-        return {"vapor_fraction": 0.0, "regime": "subcooled-liquid", "Ks": Ks, "zs": zs}
-    if Kmin >= 1:
-        return {"vapor_fraction": 1.0, "regime": "superheated-vapor", "Ks": Ks, "zs": zs}
-    V_low = 1.0 / (1.0 - Kmax) + 1e-12
-    V_high = 1.0 / (1.0 - Kmin) - 1e-12
 
     def f(V: float) -> float:
         return sum(z * (K - 1) / (1 + V * (K - 1)) for z, K in zip(zs, Ks))
 
-    a, b = V_low, V_high
-    fa, fb = f(a), f(b)
-    if fa * fb > 0:
-        raise RuntimeError("Rachford-Rice bracket failed; check Ks/zs.")
+    f0 = f(0.0)
+    f1 = f(1.0)
+    if f0 <= 0:
+        return {"vapor_fraction": 0.0, "regime": "subcooled-liquid", "Ks": Ks, "zs": zs}
+    if f1 >= 0:
+        return {"vapor_fraction": 1.0, "regime": "superheated-vapor", "Ks": Ks, "zs": zs}
+
+    a, b = 0.0, 1.0
+    fa = f0
     for _ in range(200):
         m = 0.5 * (a + b)
         fm = f(m)
         if abs(fm) < 1e-12 or (b - a) < 1e-12:
             break
-        if fa * fm < 0:
-            b, fb = m, fm
-        else:
+        if fa * fm > 0:
             a, fa = m, fm
+        else:
+            b = m
     V = 0.5 * (a + b)
     xs = [z / (1 + V * (K - 1)) for z, K in zip(zs, Ks)]
     ys = [K * x for K, x in zip(Ks, xs)]
+    xsum = sum(xs)
+    ysum = sum(ys)
+    if xsum <= 0 or ysum <= 0:
+        raise RuntimeError("Rachford-Rice generated invalid phase composition")
+    xs = [x / xsum for x in xs]
+    ys = [y / ysum for y in ys]
     return {
         "method": "rachford_rice-bisection",
+        "regime": "two-phase",
         "vapor_fraction": V,
         "xs": xs,
         "ys": ys,
