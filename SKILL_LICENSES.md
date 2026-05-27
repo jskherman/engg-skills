@@ -14,6 +14,12 @@ You are responsible for ensuring that your use of each skill complies with appli
 | `engineering_statistics` | Original statistical utilities using Python standard library calculations. |
 | `design_of_experiments` | Original factorial-design generator. |
 | `statistical_process_control` | Original SPC helper using common control-chart constants. Confirm constants and methods against your quality system. |
-| `steam_tables_iapws` | Optional helper can use the third-party `iapws` Python package if installed. Check that package license and IAPWS source terms before production use. See https://pypi.org/project/iapws/ and https://www.iapws.org/. |
+| `steam_tables_iapws` | Uses `chemicals.iapws` IAPWS utilities. Check the `chemicals` package license and IAPWS source terms before production use. See https://chemicals.readthedocs.io/chemicals.iapws.html and https://www.iapws.org/. |
 | `literature_search_engineering` | Builds URLs/reminders for public search services. Check each service's API terms before making requests: arXiv, Crossref, OpenAlex, Semantic Scholar, PubMed, and other selected sources. |
 | `engineering_skill_creator` | Original repository-specific skill-authoring guidance. |
+
+
+## Caleb Bell Library-Backed Skills
+
+- `thermo-process-properties`: uses `thermo`, `chemicals`, `fluids`, and `ht` documentation and package behavior. See https://thermo.readthedocs.io/, https://chemicals.readthedocs.io/, https://fluids.readthedocs.io/, and https://ht.readthedocs.io/.
+- Simulator-inspired property-method heuristics are based only on public documentation/training material such as DWSIM property package selection guidance and public Aspen/HYSYS/AVEVA summaries; proprietary algorithms, tables, and internal defaults are not reproduced.

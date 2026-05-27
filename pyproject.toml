@@ -20,6 +20,12 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Topic :: Scientific/Engineering"
 ]
+dependencies = [
+    "chemicals>=1.5",
+    "fluids>=1.3",
+    "ht>=1.2",
+    "thermo>=0.6",
+]
 
 [dependency-groups]
 dev = ["pytest>=8.0"]

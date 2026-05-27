@@ -18,7 +18,8 @@ Each skill gives an AI coding agent focused instructions, reusable Python CLI sc
 | `engineering_statistics` | Descriptive statistics, confidence intervals, and linear regression. |
 | `design_of_experiments` | Full-factorial and two-level factorial design helpers. |
 | `statistical_process_control` | Individuals, Xbar-R, and basic process capability calculations. |
-| `steam_tables_iapws` | Optional IAPWS-97 steam-property helper with graceful dependency handling. |
+| `steam_tables_iapws` | IAPWS water/steam properties through `chemicals.iapws`. |
+| `thermo_process_properties` | Caleb Bell library-backed process properties: PR EOS, COSTALD LPG density, IAPWS, and property-method heuristics. |
 | `literature_search_engineering` | Query-building helpers and API terms reminders for engineering literature search. |
 | `engineering_skill_creator` | Guidance for adding new engineering skills in this repository style. |
 
@@ -73,3 +74,10 @@ This repository is architecturally inspired by the public `google-deepmind/scien
 ## Licensing
 
 Software in this repository is licensed under Apache License 2.0. Skill documentation and reference notes are provided under the same repository license unless otherwise stated. See `LICENSE`, `NOTICE.md`, and `SKILL_LICENSES.md`.
+
+
+## Caleb Bell Python Process-Calculation Stack
+
+This repository now treats Caleb Bell's `thermo`, `chemicals`, `fluids`, and `ht` libraries as preferred calculation backends when a full GUI process simulator is unavailable. The `thermo_process_properties` skill includes LPG/light-hydrocarbon examples using translated Peng-Robinson EOS (`thermo.eos_mix.PRMIXTranslatedPPJP`), COSTALD liquid density via `chemicals.volume`, and IAPWS water/steam calculations via `chemicals.iapws`.
+
+Simulator-style heuristics are documented as transparent selection rules, not proprietary simulator implementations: IAPWS for water/steam, cubic EOS for nonpolar hydrocarbons at pressure, COSTALD for LPG liquid density screening, and activity-coefficient/specialized models for polar, electrolyte, amine, glycol, sour-water, or reactive systems.
