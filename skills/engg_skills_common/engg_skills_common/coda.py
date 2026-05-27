@@ -20,6 +20,8 @@ from typing import Any, Sequence
 
 
 def _validate_composition(x: Sequence[float]) -> list[float]:
+    if not x:
+        raise ValueError("composition cannot be empty")
     if any(xi <= 0 for xi in x):
         raise ValueError("composition components must be strictly positive (replace zeros first)")
     s = sum(x)
@@ -48,21 +50,36 @@ def alr(x: Sequence[float], denominator_index: int = -1) -> list[float]:
     """Additive log-ratio transform, removing one component as denominator."""
 
     x = _validate_composition(x)
-    denom = x[denominator_index]
-    return [math.log(xi / denom) for i, xi in enumerate(x) if i != (denominator_index % len(x))]
+    denom_i = denominator_index % len(x)
+    denom = x[denom_i]
+    return [math.log(xi / denom) for i, xi in enumerate(x) if i != denom_i]
 
 
 def multiplicative_replacement(x: Sequence[float], delta: float = 1e-6) -> list[float]:
-    """Replace zeros with `delta` and rescale so the composition sums to 1."""
+    """Replace zeros with `delta` and rescale so the composition sums to 1.
 
+    `delta` is the replacement fraction assigned to each zero component in the
+    closed composition. Non-zero parts are scaled by `(1 - m*delta)` after the
+    original composition is closed over its positive parts.
+    """
+
+    if not x:
+        raise ValueError("composition cannot be empty")
     if delta <= 0:
         raise ValueError("delta must be positive")
+    if any(v < 0 for v in x):
+        raise ValueError("composition values cannot be negative")
     zeros = [i for i, v in enumerate(x) if v == 0]
     if not zeros:
         return list(_validate_composition(x))
-    n = len(x)
     nz = len(zeros)
+    if nz == len(x):
+        raise ValueError("cannot replace an all-zero composition")
+    if nz * delta >= 1:
+        raise ValueError("delta is too large for the number of zero components")
     s_obs = sum(x)
+    if s_obs <= 0:
+        raise ValueError("positive composition sum required")
     factor = (1 - nz * delta) / s_obs
     return [delta if i in zeros else v * factor for i, v in enumerate(x)]
 
@@ -111,6 +128,8 @@ def ilr(x: Sequence[float], sbp: list[list[int]] | None = None) -> list[float]:
             row[i + 1] = -1
             sbp.append(row)
     psi = sbp_to_psi(sbp)
+    if any(len(row) != D for row in sbp):
+        raise ValueError("SBP column count must match composition length")
     log_x = [math.log(xi) for xi in x]
     # Each balance: y_k = sum_j psi_kj * log(x_j)
     return [sum(psi_row[j] * log_x[j] for j in range(D)) for psi_row in psi]
@@ -129,6 +148,8 @@ def heavy_end_balance(
     are treated as zeros and replaced via multiplicative_replacement.
     """
 
+    if not heavy_components or not body_components:
+        raise ValueError("heavy_components and body_components must both be non-empty")
     all_named = heavy_components + body_components
     raw = [composition.get(name, 0.0) for name in all_named]
     cleaned = multiplicative_replacement(raw)
