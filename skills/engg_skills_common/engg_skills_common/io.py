@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -48,15 +49,9 @@ def write_json(data: dict[str, Any], output: str | Path) -> Path:
 
 
 def parse_number_list(text: str) -> list[float]:
-    """Parse comma, semicolon, or whitespace separated numbers."""
+    """Parse comma-, semicolon-, or whitespace-separated numbers."""
 
-    normalized = text.replace(";", ",").replace("\n", ",").replace("\t", ",")
-    values: list[float] = []
-    for chunk in normalized.split(","):
-        stripped = chunk.strip()
-        if not stripped:
-            continue
-        values.append(float(stripped))
+    values = [float(chunk) for chunk in re.split(r"[\s,;]+", text.strip()) if chunk]
     if not values:
         raise ValueError("expected at least one numeric value")
     return values
