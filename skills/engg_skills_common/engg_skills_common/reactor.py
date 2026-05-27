@@ -29,6 +29,10 @@ def arrhenius_fit(temperatures_K: list[float], rate_constants: list[float]) -> d
         raise ValueError("temperature and rate vectors must align")
     if len(temperatures_K) < 2:
         raise ValueError("need at least two data points")
+    if any(T <= 0 for T in temperatures_K):
+        raise ValueError("temperatures must be positive K")
+    if any(k <= 0 for k in rate_constants):
+        raise ValueError("rate constants must be positive")
     xs = [1.0 / T for T in temperatures_K]
     ys = [math.log(k) for k in rate_constants]
     n = len(xs)
@@ -37,9 +41,11 @@ def arrhenius_fit(temperatures_K: list[float], rate_constants: list[float]) -> d
     sxx = sum((x - xbar) ** 2 for x in xs)
     sxy = sum((x - xbar) * (y - ybar) for x, y in zip(xs, ys))
     syy = sum((y - ybar) ** 2 for y in ys)
+    if sxx <= 0:
+        raise ValueError("temperatures must not all be identical")
     slope = sxy / sxx
     intercept = ybar - slope * xbar
-    r2 = (sxy ** 2) / (sxx * syy) if sxx > 0 and syy > 0 else 1.0
+    r2 = (sxy ** 2) / (sxx * syy) if syy > 0 else 1.0
     Ea = -slope * R_GAS
     A = math.exp(intercept)
     return {
@@ -54,6 +60,8 @@ def arrhenius_fit(temperatures_K: list[float], rate_constants: list[float]) -> d
 
 
 def k_arrhenius(T_K: float, A: float, Ea_J_mol: float) -> float:
+    if T_K <= 0 or A <= 0:
+        raise ValueError("T_K and A must be positive")
     return A * math.exp(-Ea_J_mol / (R_GAS * T_K))
 
 
@@ -68,13 +76,15 @@ def cstr_volume_nth_order(
     """Isothermal liquid-phase CSTR volume for a single nth-order reaction.
 
     Design equation: V = F0 X / (-r_A) with F0 = C0 Q, -r_A = k C^n at outlet.
-    `order` may be any non-negative real.
+    `order` must be non-negative.
     """
 
     if not (0 < conversion < 1):
         raise ValueError("conversion must be in (0, 1)")
     if C0 <= 0 or flow_m3_s <= 0 or k <= 0:
         raise ValueError("C0, flow, k must be positive")
+    if order < 0:
+        raise ValueError("order must be non-negative")
     C = C0 * (1 - conversion)
     r = k * C ** order
     if r <= 0:
@@ -107,12 +117,14 @@ def pfr_volume_nth_order(
         raise ValueError("conversion must be in (0, 1)")
     if C0 <= 0 or flow_m3_s <= 0 or k <= 0:
         raise ValueError("C0, flow, k must be positive")
+    if order < 0:
+        raise ValueError("order must be non-negative")
     if abs(order - 1.0) < 1e-9:
         tau = -math.log(1 - conversion) / k
     elif abs(order - 0.0) < 1e-9:
         tau = conversion * C0 / k
     else:
-        tau = (C0 ** (1 - order)) * (1 - (1 - conversion) ** (1 - order)) / (k * (1 - order))
+        tau = (C0 ** (1 - order)) * ((1 - conversion) ** (1 - order) - 1.0) / (k * (order - 1))
     return {
         "method": "PFR-nth-order-analytical",
         "order": order,
@@ -136,20 +148,21 @@ def batch_time_nth_order(
     """Isothermal constant-volume batch time for an nth-order reaction.
 
     For order=1: t = -ln(1-X)/k. For order=0: t = X C0 / k.
-    For other order n != 1: t = (C0^(1-n) - C^(1-n)) / (k(n-1)).
+    For other order n != 1: t = C0^(1-n) * [(1-X)^(1-n) - 1] / [k(n-1)].
     """
 
     if not (0 < conversion < 1):
         raise ValueError("conversion must be in (0, 1)")
     if C0 <= 0 or k <= 0:
         raise ValueError("C0 and k must be positive")
+    if order < 0:
+        raise ValueError("order must be non-negative")
     if abs(order - 1.0) < 1e-9:
         t = -math.log(1 - conversion) / k
     elif abs(order - 0.0) < 1e-9:
         t = conversion * C0 / k
     else:
-        C = C0 * (1 - conversion)
-        t = (C ** (1 - order) - C0 ** (1 - order)) / (k * (order - 1))
+        t = (C0 ** (1 - order)) * ((1 - conversion) ** (1 - order) - 1.0) / (k * (order - 1))
     return {
         "method": "Batch-nth-order-analytical",
         "order": order,
@@ -173,6 +186,8 @@ def cstr_in_series(
     Returns per-vessel residence time and total volume.
     """
 
+    if C0 <= 0 or flow_m3_s <= 0:
+        raise ValueError("C0 and flow must be positive")
     if N < 1 or not (0 < overall_conversion < 1) or k <= 0:
         raise ValueError("require N >= 1, 0 < X < 1, k > 0")
     # For 1st order, C_N/C0 = (1+k tau)^-N -> per-vessel tau
@@ -197,15 +212,17 @@ def pfr_numeric(
     max_tau_s: float = 1e6,
     steps: int = 10_000,
 ) -> dict[str, Any]:
-    """Trapezoidal integration of dV = -F0 dX / r(C).
+    """Midpoint-rule integration of dV = F0 dX / (-r_A).
 
-    `rate_per_unit_volume(C)` returns mol/(m^3 s) given concentration C (mol/m^3).
+    `rate_per_unit_volume(C)` returns positive mol/(m^3 s) given concentration C (mol/m^3).
     Use for any non-standard rate law (Langmuir-Hinshelwood, Michaelis-Menten,
     reversible reactions, etc.).
     """
 
     if not (0 < target_conversion < 1):
         raise ValueError("conversion must be in (0, 1)")
+    if C0 <= 0 or flow_m3_s <= 0 or steps < 1 or max_tau_s <= 0:
+        raise ValueError("C0, flow, steps, and max_tau_s must be positive")
     F0 = C0 * flow_m3_s
     dX = target_conversion / steps
     X = 0.0
@@ -220,7 +237,7 @@ def pfr_numeric(
         if V > flow_m3_s * max_tau_s:
             raise RuntimeError("integration exceeded max_tau_s")
     return {
-        "method": "PFR-trapezoidal-numeric",
+        "method": "PFR-midpoint-numeric",
         "volume_m3": V,
         "tau_residence_s": V / flow_m3_s,
         "conversion": X,
