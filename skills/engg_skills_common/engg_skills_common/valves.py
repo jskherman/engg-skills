@@ -1,9 +1,10 @@
 """Control and relief valve sizing helpers.
 
 Control valve sizing uses `fluids.control_valve` (ISA 75.01.01 / IEC 60534
-equations). Relief sizing implements API 520 8th-edition style equations for
-gas/vapor and liquid service as preliminary screening; final relief sizing
-must follow the published standard text and qualified relief engineering.
+equations). Relief sizing implements API 520 Part I 8th-edition gas/vapor and
+liquid screening equations with SI inputs and explicit API-unit conversions.
+Final relief sizing must follow the published standard text and qualified
+pressure-relief engineering.
 """
 
 from __future__ import annotations
@@ -70,6 +71,33 @@ def gas_control_valve(
     }
 
 
+def api520_gas_critical_pressure_ratio(gamma: float) -> float:
+    """Critical downstream/upstream absolute pressure ratio for ideal-gas PRV flow."""
+
+    if gamma <= 1.0:
+        raise ValueError("gamma must be > 1 for API 520 ideal-gas equations")
+    return (2.0 / (gamma + 1.0)) ** (gamma / (gamma - 1.0))
+
+
+def api520_gas_coefficient_C(gamma: float) -> float:
+    """API 520 gas/vapor coefficient C in SI units for critical-flow equations."""
+
+    if gamma <= 1.0:
+        raise ValueError("gamma must be > 1 for API 520 ideal-gas equations")
+    return 0.03948 * math.sqrt(gamma * (2.0 / (gamma + 1.0)) ** ((gamma + 1.0) / (gamma - 1.0)))
+
+
+def api520_subcritical_F2(gamma: float, pressure_ratio: float) -> float:
+    """API 520 subcritical-flow coefficient F2 for gas/vapor service."""
+
+    if gamma <= 1.0:
+        raise ValueError("gamma must be > 1 for API 520 ideal-gas equations")
+    if not (0.0 < pressure_ratio < 1.0):
+        raise ValueError("pressure_ratio must be between 0 and 1")
+    numerator = 1.0 - pressure_ratio ** ((gamma - 1.0) / gamma)
+    return math.sqrt((gamma / (gamma - 1.0)) * pressure_ratio ** (2.0 / gamma) * numerator / (1.0 - pressure_ratio))
+
+
 def api520_gas_relief_area(
     *,
     mass_flow_kg_s: float,
@@ -83,46 +111,82 @@ def api520_gas_relief_area(
     Kb: float = 1.0,
     Kc: float = 1.0,
 ) -> dict[str, Any]:
-    """API 520 Part I preliminary gas/vapor relief orifice area (sub-critical or critical).
+    """API 520 Part I preliminary gas/vapor relief orifice area.
 
-    Uses the critical-flow form for choked flow and the sub-critical form
-    otherwise. Discharge coefficient Kd defaults to 0.975 (typical for gas
-    PRV with rupture disk not in series).
+    Inputs are SI: kg/s, K, g/mol, and absolute Pa. Internally the function
+    converts to the API 520 SI equation basis of kg/h, kPa, K, kg/kg-mol, and
+    mm^2. Critical flow uses the API critical-flow equation. Subcritical flow
+    uses the API subcritical equation for conventional and pilot-operated PRVs;
+    for balanced-bellows subcritical service, obtain `Kb` from the manufacturer
+    or the standard's backpressure correction figures and verify the sizing path.
     """
 
-    R = 8314.462618  # J/(kmol K)
-    # critical pressure ratio
-    crit_ratio = (2 / (gamma + 1)) ** (gamma / (gamma - 1))
-    Pb_ratio = Pb_Pa / P1_relieving_Pa
-    if Pb_ratio <= crit_ratio:
+    if mass_flow_kg_s <= 0 or T_K <= 0 or MW <= 0 or Z <= 0:
+        raise ValueError("mass flow, temperature, MW, and Z must be positive")
+    if P1_relieving_Pa <= Pb_Pa:
+        raise ValueError("upstream relieving pressure must exceed backpressure")
+    for name, value in {"Kd": Kd, "Kb": Kb, "Kc": Kc}.items():
+        if value <= 0:
+            raise ValueError(f"{name} must be positive")
+
+    W_kg_h = mass_flow_kg_s * 3600.0
+    P1_kPa = P1_relieving_Pa / 1000.0
+    P2_kPa = Pb_Pa / 1000.0
+    pressure_ratio = P2_kPa / P1_kPa
+    critical_ratio = api520_gas_critical_pressure_ratio(gamma)
+    warnings: list[str] = []
+
+    if pressure_ratio <= critical_ratio:
         regime = "critical"
-        C = math.sqrt(gamma * (2 / (gamma + 1)) ** ((gamma + 1) / (gamma - 1)))
-        # API 520 Eq (in SI): A = W / (C * Kd * P1 * Kb * Kc) * sqrt(T Z / MW)
-        # Here W in kg/s, P1 in Pa, A in m^2; constant absorbed in C-derivation.
-        A = mass_flow_kg_s * math.sqrt(T_K * Z / MW) / (C * Kd * P1_relieving_Pa * Kb * Kc) * math.sqrt(R / 1000)
+        C = api520_gas_coefficient_C(gamma)
+        A_mm2 = W_kg_h / (C * Kd * P1_kPa * Kb * Kc) * math.sqrt(T_K * Z / MW)
+        equation = "API 520 Part I 8th ed. Eq. (5), with C from Eq. (9)"
+        F2 = None
     else:
         regime = "subcritical"
-        F2 = math.sqrt(
-            (gamma / (gamma - 1))
-            * (Pb_ratio ** (2 / gamma))
-            * (1 - Pb_ratio ** ((gamma - 1) / gamma))
+        F2 = api520_subcritical_F2(gamma, pressure_ratio)
+        A_mm2 = (
+            17.9
+            * W_kg_h
+            / (F2 * Kd * Kc)
+            * math.sqrt(T_K * Z / (MW * P1_kPa * (P1_kPa - P2_kPa)))
         )
-        A = mass_flow_kg_s * math.sqrt(T_K * Z / MW) / (Kd * F2 * P1_relieving_Pa * Kc * math.sqrt(2)) * math.sqrt(R / 1000)
+        equation = "API 520 Part I 8th ed. Eq. (15), with F2 from Eq. (18)"
+        C = None
+        if abs(Kb - 1.0) > 1e-12:
+            warnings.append("Kb is not used in the API 520 subcritical gas/vapor equation used here.")
+
     return {
-        "method": "API-520-Part-I-gas",
+        "method": "API-520-Part-I-8th-ed-gas-vapor",
+        "api_equation_basis": equation,
         "regime": regime,
-        "required_orifice_area_m2": A,
-        "required_orifice_area_mm2": A * 1e6,
-        "critical_pressure_ratio": crit_ratio,
-        "Pb_over_P1": Pb_ratio,
+        "required_orifice_area_m2": A_mm2 / 1e6,
+        "required_orifice_area_mm2": A_mm2,
+        "critical_pressure_ratio_Pcf_over_P1": critical_ratio,
+        "backpressure_ratio_P2_over_P1": pressure_ratio,
+        "C_SI": C,
+        "F2": F2,
         "Kd": Kd,
         "Kb": Kb,
         "Kc": Kc,
         "mass_flow_kg_s": mass_flow_kg_s,
+        "mass_flow_kg_h": W_kg_h,
         "T_K": T_K,
         "MW_g_mol": MW,
-        "P1_relieving_Pa": P1_relieving_Pa,
+        "Z": Z,
+        "gamma": gamma,
+        "P1_relieving_Pa_abs": P1_relieving_Pa,
+        "Pb_Pa_abs": Pb_Pa,
+        "warnings": warnings,
     }
+
+
+def api520_liquid_viscosity_correction(Re: float) -> float:
+    """API 520 liquid-service viscosity correction factor Kv."""
+
+    if Re <= 0:
+        raise ValueError("Re must be positive")
+    return (0.9935 + 2.878 / math.sqrt(Re) + 342.75 / (Re ** 1.5)) ** -1.0
 
 
 def api520_liquid_relief_area(
@@ -135,28 +199,66 @@ def api520_liquid_relief_area(
     Kw: float = 1.0,
     Kc: float = 1.0,
     Kv: float = 1.0,
+    Kp: float = 1.0,
+    mu_Pa_s: float | None = None,
+    selected_orifice_area_m2: float | None = None,
 ) -> dict[str, Any]:
     """API 520 Part I preliminary liquid relief orifice area.
 
-    Discharge coefficient Kd defaults to 0.65 (typical for liquid PRV without
-    capacity certification). Override with vendor-certified value.
+    Inputs are SI: m^3/s, kg/m^3, and Pa. The calculation uses API 520 SI
+    liquid equation units internally: Q in L/min, pressure drop in kPa, and
+    area in mm^2. If `mu_Pa_s` is supplied, `Kv` is calculated from the API
+    Reynolds-number correlation; otherwise the explicit `Kv` input is used.
     """
 
-    dP = P1_relieving_Pa - Pb_Pa
-    if dP <= 0:
+    if Q_m3_s <= 0 or rho_kg_m3 <= 0:
+        raise ValueError("Q and rho must be positive")
+    if P1_relieving_Pa <= Pb_Pa:
         raise ValueError("inlet relieving pressure must exceed back-pressure")
-    # A = Q / (Kd * Kw * Kc * Kv) * sqrt(rho / (2 * dP))
-    A = Q_m3_s / (Kd * Kw * Kc * Kv) * math.sqrt(rho_kg_m3 / (2 * dP))
+    for name, value in {"Kd": Kd, "Kw": Kw, "Kc": Kc, "Kv": Kv, "Kp": Kp}.items():
+        if value <= 0:
+            raise ValueError(f"{name} must be positive")
+    if mu_Pa_s is not None and mu_Pa_s <= 0:
+        raise ValueError("mu_Pa_s must be positive when provided")
+    if selected_orifice_area_m2 is not None and selected_orifice_area_m2 <= 0:
+        raise ValueError("selected_orifice_area_m2 must be positive when provided")
+
+    Q_L_min = Q_m3_s * 60_000.0
+    dP_kPa = (P1_relieving_Pa - Pb_Pa) / 1000.0
+    G1 = rho_kg_m3 / 999.016  # water density near standard conditions, kg/m^3
+    A_no_visc_mm2 = 11.78 * Q_L_min / (Kd * Kw * Kc * Kp) * math.sqrt(G1 / dP_kPa)
+    Re = None
+    Kv_used = Kv
+    warnings: list[str] = []
+    if mu_Pa_s is not None:
+        mu_cP = mu_Pa_s * 1000.0
+        A_for_Re_mm2 = selected_orifice_area_m2 * 1e6 if selected_orifice_area_m2 is not None else A_no_visc_mm2
+        Re = 18_800.0 * Q_L_min * G1 / (mu_cP * math.sqrt(A_for_Re_mm2))
+        Kv_used = api520_liquid_viscosity_correction(Re)
+        if abs(Kv - 1.0) > 1e-12:
+            warnings.append("Explicit Kv input ignored because mu_Pa_s was provided and Kv was calculated.")
+        if selected_orifice_area_m2 is None:
+            warnings.append("Kv was estimated using the preliminary calculated area; API 520 sizes the next larger standard orifice before final Re/Kv evaluation.")
+
+    A_mm2 = A_no_visc_mm2 / Kv_used
     return {
-        "method": "API-520-Part-I-liquid",
-        "required_orifice_area_m2": A,
-        "required_orifice_area_mm2": A * 1e6,
+        "method": "API-520-Part-I-8th-ed-liquid",
+        "api_equation_basis": "API 520 Part I 8th ed. Eq. (29); Eq. (30)/(33) if viscosity correction is calculated",
+        "required_orifice_area_m2": A_mm2 / 1e6,
+        "required_orifice_area_mm2": A_mm2,
+        "area_without_viscosity_correction_mm2": A_no_visc_mm2,
         "Q_m3_s": Q_m3_s,
+        "Q_L_min": Q_L_min,
         "rho_kg_m3": rho_kg_m3,
+        "specific_gravity_G1": G1,
         "P1_relieving_Pa": P1_relieving_Pa,
         "Pb_Pa": Pb_Pa,
+        "dP_kPa": dP_kPa,
         "Kd": Kd,
         "Kw": Kw,
         "Kc": Kc,
-        "Kv": Kv,
+        "Kp": Kp,
+        "Kv": Kv_used,
+        "Re": Re,
+        "warnings": warnings,
     }
