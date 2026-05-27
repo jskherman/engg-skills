@@ -1,27 +1,55 @@
 ---
 name: thermo-process-properties
 description: >-
-  Use Caleb Bell's thermo, chemicals, fluids, and ht ecosystem for process-property calculations when a full GUI simulator is unavailable. Includes LPG cubic-EOS/COSTALD workflows, IAPWS water/steam properties, and simulator-inspired property-method selection heuristics.
+  Run Caleb Bell library-backed process property calculations: PR /
+  Translated-PR cubic EOS for LPG and light hydrocarbon mixtures, COSTALD
+  mixture liquid density (saturated and compressed), IAPWS water/steam
+  state, and a transparent property-method recommendation heuristic
+  modeled on DWSIM / Aspen / HYSYS / PRO/II guidance. Use when you need a
+  defensible property method or density for a process calculation. Don't
+  use for full multi-component flash (use vle-flash-calculations), for
+  the EOS decision tree by itself (use equation-of-state-selection), or
+  for steam-only systems (use steam-tables-iapws).
 ---
 
 # Thermodynamic and Transport Property Calculations
 
 ## Overview
 
-Use this skill for Python-based process simulation support with Caleb Bell's libraries:
+Caleb Bell library wrapper utilities. Implements:
 
-- `thermo` for chemical constants, cubic EOS objects, flash calculations, and IAPWS phase classes.
-- `chemicals` for correlations including COSTALD and IAPWS-95 utilities.
-- `fluids` for hydraulics and pressure-drop correlations.
-- `ht` for heat-transfer correlations, LMTD, correction factors, and NTU/effectiveness workflows.
+- `recommend`: property-method recommendation given components and
+  application context.
+- `costald-density`: COSTALD (saturated) or COSTALD_compressed mixture
+  liquid density for light hydrocarbons.
+- `pr-translated-eos`: instantiate `thermo.eos_mix.PRMIXTranslatedPPJP`
+  with reported molar volumes, Z-factors, and departure functions.
+- `iapws-state` / `iapws-saturation`: pure water / steam properties.
 
-## Core Rules
+Heuristics for method selection are transparent and built from public
+sources (DWSIM, Carlson, AVEVA / Aspen training material). No
+proprietary defaults are reproduced.
 
-- Use dedicated IAPWS water/steam methods for water and steam; do not default to cubic EOS.
-- For LPG/light-hydrocarbon processing, use cubic EOS workflows for VLE and COSTALD for liquid density when appropriate.
-- For `thermo.eos_mix.PRMIXTranslatedPPJP`, explicitly track critical properties, acentric factors, binary interaction parameters, and volume-translation constants.
-- Always state units, basis, property method, data source, and warnings.
-- Treat outputs as preliminary; validate against lab data, plant data, or trusted simulator results before design use.
+## Prerequisites
+
+1. `uv` available.
+2. On first use, the script writes `LICENSE_NOTIFICATION.txt` listing
+   the upstream library terms.
+
+## Use when
+
+- Picking a property method for a flowsheet zone.
+- Estimating LPG liquid density at storage / vessel conditions (COSTALD).
+- Getting a Translated-PR liquid molar volume for an LPG mixture.
+- Pure-water / steam state at known T, P.
+
+## Don't use for
+
+- Multi-component flash (`vle-flash-calculations`).
+- EOS decision tree by itself (`equation-of-state-selection`).
+- Steam-table-only calculations (`steam-tables-iapws`).
+- Non-LPG hydrocarbon systems where COSTALD is outside its accuracy
+  envelope.
 
 ## Utility Scripts
 
@@ -30,17 +58,50 @@ Use this skill for Python-based process simulation support with Caleb Bell's lib
 - `uv run scripts/property_methods.py iapws-state --temperature-k 373.15 --pressure-pa 101325 --output /tmp/steam.json`
 - `uv run scripts/property_methods.py pr-translated-eos --components propane,n-butane --zs 0.5,0.5 --temperature-k 300 --pressure-pa 1000000 --output /tmp/pr.json`
 
-## Simulator-Inspired Heuristics
+## Workflow
 
-- Water/steam utility systems: IAPWS/steam tables.
-- Nonpolar hydrocarbons at elevated pressure: Peng-Robinson/SRK-style cubic EOS, with BIP checks.
-- LPG liquid density: COSTALD mixture/compressed density is often a good screening method for light hydrocarbons.
-- Polar liquid systems: activity-coefficient models such as NRTL/UNIQUAC/UNIFAC when parameters are available.
-- Electrolytes, amines, glycols, sour water, hydrates, and reactive systems: specialized models/packages; do not oversimplify.
+1. Identify components and the operating envelope (T, P, composition).
+2. Run `recommend` for a property-method check.
+3. For LPG liquid density at vessel conditions, prefer COSTALD compressed.
+4. For pure water/steam, prefer IAPWS.
+5. For full flash, hand off to `vle-flash-calculations` with the selected
+   EOS.
+
+## Common Mistakes
+
+- Using PR (default) for LPG liquid density at moderate pressure; PR
+  underpredicts liquid density by 5-15%. Use Translated-PR or COSTALD.
+- Using COSTALD for a non-light-hydrocarbon (water, alcohol, amine);
+  COSTALD is accurate only for nonpolar light hydrocarbons.
+- Using IAPWS for water-in-hydrocarbon systems; IAPWS is pure water only.
+- Passing the kij matrix as zeros for a sour LPG mixture; H2S / mercaptan
+  / amine interactions need real kij.
+- Confusing mass density (kg/m³) with molar volume (m³/mol).
+- Treating the PRMIXTranslatedPPJP molar volume as exact without
+  providing the per-component translation constants `cs`.
+- Using `recommend` output as a final decision without doing the
+  second-opinion flash recommended by the decision-tree.
+- Treating water-content trace as negligible without checking with a
+  hydrate / glycol skill.
+
+## Fallback Strategies
+
+- If `thermo` / `chemicals` import fails for an exotic component, fall
+  back to built-in LPG defaults via `engg_skills_common.property_backends`.
+- For density that is wildly off, switch from COSTALD to
+  PRMIXTranslatedPPJP (or vice versa) and report both.
+
+## References
+
+- `references/property_method_selection.md` — full method matrix.
+- `references/caleb_bell_libraries.md` — library overview and links.
+- `thermo` docs: https://thermo.readthedocs.io/
+- `chemicals` docs: https://chemicals.readthedocs.io/
+- DWSIM property package selection wiki.
 
 ## Anti-Patterns
 
-- Assuming Aspen/HYSYS/PRO/II/DWSIM defaults without stating the selected property package.
-- Using cubic EOS for steam-table utility calculations.
-- Reporting LPG density without specifying whether it is saturated/compressed, liquid/vapor, and mass/molar basis.
-- Ignoring binary interaction parameters and volume translation for cubic EOS.
+- Reporting properties without naming the EOS or correlation.
+- Using cubic EOS for steam.
+- Reporting LPG liquid density without naming whether COSTALD or PR was
+  used.

@@ -1,38 +1,91 @@
 ---
 name: material-energy-balances
 description: >-
-  Support material and energy balance workflows, component totals, conversion, selectivity, yield, and degree-of-freedom thinking. Use when a user asks for chemical engineering, process engineering, applied science, or statistics work matching this scope.
+  Compute steady-state component and total mass balance residuals,
+  conversion / selectivity / yield, and degree-of-freedom counts for a
+  process node. Use when checking that a stream table closes or sanity-
+  checking a simulation export. Don't use for dynamic / transient
+  balances (different math; use a state-space solver) or as a substitute
+  for a flowsheet simulator's rigorous closure.
 ---
 
-# Material Energy Balances
+# Material and Energy Balances
 
 ## Overview
 
-Support material and energy balance workflows, component totals, conversion, selectivity, yield, and degree-of-freedom thinking.
+Steady-state balance helpers:
 
-## Core Rules
+- Component mass balance residual for one node (inlets - outlets, summed
+  per component).
+- Total mass balance residual.
+- Conversion, selectivity, yield computed from inlet/outlet component
+  flows.
+- Degree-of-freedom (DoF) counter for a node, given the number of streams,
+  components, and specifications.
 
-- Prefer the provided script for repeatable calculations or data access.
-- Require explicit units and assumptions; never invent missing physical property data.
-- Write machine-readable outputs to JSON when a script is used.
-- Report assumptions, warnings, methods, and sources.
-- Keep proprietary standards, handbook tables, and copyrighted examples out of outputs unless the user supplies authorized excerpts.
+## Prerequisites
 
-## Safety and Scope
+1. `uv` available.
 
-Outputs are preliminary engineering calculations only. Do not use them as final design, operations, code-compliance, pressure-containing equipment, relief-device, or safety decisions without qualified engineering review and validated plant data.
+## Use when
+
+- Checking that a hand-built stream table closes.
+- Sanity-checking a flowsheet export (mole or mass basis).
+- Counting unknowns vs equations before deciding whether the problem is
+  solvable.
+
+## Don't use for
+
+- Transient (dynamic) balances; the math involves dC/dt and requires a
+  state-space approach.
+- Rigorous flowsheet convergence; use a simulator.
+- Detailed equilibrium / reactor design; this skill is balance-only.
+
+## Utility Scripts
+
+- `uv run scripts/balance_solver.py --inlets "feed:A=10,B=5" --outlets "vap:A=2,B=1;liq:A=8,B=4" --output /tmp/bal.json`
 
 ## Workflow
 
-1. Identify the engineering question and required inputs.
-2. Check scope limits and safety/compliance implications.
-3. Run the relevant script or follow the documented method.
-4. Inspect warnings and validate units/magnitude.
-5. Summarize results with assumptions, limitations, and next verification steps.
+1. Identify the node and its streams.
+2. List inlets and outlets with per-component flow rates (mol/s or kg/s,
+   consistent basis).
+3. Run the script. Inspect the per-component residual.
+4. If residual is non-zero, look for: missing recycle, missing stream,
+   wrong basis (mol vs mass), or an actual instrument bias.
+5. For conversion/selectivity/yield, supply reactant and key product
+   flows.
+
+## Common Mistakes
+
+- Mixing mass and molar basis silently.
+- Forgetting recycle streams.
+- Reporting "conversion 97%" without naming the key reactant and the
+  basis (per pass vs overall).
+- Using yield where you mean selectivity (yield is mol product / mol
+  reactant fed; selectivity is mol product / mol reactant reacted).
+- Computing residuals only in absolute terms; relative residuals
+  (residual / inlet) are usually more useful.
+- Using mass balance closure to justify a doubtful instrument when
+  energy balance also fails to close.
+- Counting equations without subtracting redundant ones (a
+  total-balance plus all-component balances over-counts).
+- Not propagating measurement uncertainty when judging closure ("looks
+  closed at 0.5%" might be within instrument noise).
+
+## Fallback Strategies
+
+- If the residual is large but the data is suspect, suggest data
+  reconciliation (Crowe's method or similar).
+- For dynamic balances, surface that this skill does not cover them.
+
+## References
+
+- `references/workflow.md` — detailed checklist for a node closure.
 
 ## Anti-Patterns
 
-- Treating preliminary calculations as final design.
-- Hiding unit conversions or basis assumptions.
-- Reproducing proprietary standards or vendor tables.
-- Presenting estimates without uncertainty/validity notes.
+- Reporting a balance that does not close as if it does.
+- Hiding the basis in the report.
+- Using component balances to detect bias without ruling out leakage,
+  recycle, or unmeasured purge.

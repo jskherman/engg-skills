@@ -1,42 +1,96 @@
 ---
 name: heat-exchanger-sizing
 description: >-
-  Perform preliminary heat exchanger LMTD duty and area calculations. Use when a user asks for chemical engineering, process engineering, applied science, or statistics work matching this scope.
+  LMTD-based duty and area estimate for counter- or co-current heat
+  exchangers, with optional multi-pass F-factor correction (via `ht`).
+  Use when sizing a new exchanger or sanity-checking an existing one with
+  known U. Don't use for rigorous Bell-Delaware shell-side analysis,
+  rate-based two-phase boiling/condensation design, or for an unknown U
+  (compute h on each side first via convective-heat-transfer-correlations).
 ---
 
-# Heat Exchanger Sizing
+# Heat Exchanger Sizing (LMTD)
 
 ## Overview
 
-Perform preliminary heat exchanger LMTD duty and area calculations.
+LMTD-based duty and area calculation for a known overall heat transfer
+coefficient U. Counter-current or co-current; multi-pass F-factor via the
+`ht` library. Duty can be computed from terminal temperatures or supplied
+explicitly.
 
-## Core Rules
+## Prerequisites
 
-- Prefer the provided script for repeatable calculations or data access.
-- Require explicit units and assumptions; never invent missing physical property data.
-- Write machine-readable outputs to JSON when a script is used.
-- Report assumptions, warnings, methods, and sources.
-- Keep proprietary standards, handbook tables, and copyrighted examples out of outputs unless the user supplies authorized excerpts.
+1. `uv` available.
 
-## Safety and Scope
+## Use when
 
-Outputs are preliminary engineering calculations only. Do not use them as final design, operations, code-compliance, pressure-containing equipment, relief-device, or safety decisions without qualified engineering review and validated plant data.
+- Sizing a new exchanger when you have a defensible U value (vendor data,
+  prior project) and terminal temperatures.
+- Sanity-checking an existing exchanger for new conditions.
+
+## Don't use for
+
+- Bell-Delaware shell-side design with detailed baffle / bundle
+  configuration.
+- Rate-based two-phase boiling or condensation (use a vendor or
+  specialized tool).
+- Calculating U from first principles when h on either side is unknown
+  (use `convective-heat-transfer-correlations` first).
 
 ## Utility Scripts
 
-- `uv run scripts/size_heat_exchanger.py`
+- `uv run scripts/size_heat_exchanger.py --hot-in 423 --hot-out 363 --cold-in 298 --cold-out 363 --arrangement counterflow --overall-u-w-m2-k 500 --duty-w 1e6 --output /tmp/hx.json`
 
 ## Workflow
 
-1. Identify the engineering question and required inputs.
-2. Check scope limits and safety/compliance implications.
-3. Run the relevant script or follow the documented method.
-4. Inspect warnings and validate units/magnitude.
-5. Summarize results with assumptions, limitations, and next verification steps.
+1. Define hot/cold inlet and outlet temperatures (K).
+2. Decide arrangement: counterflow (preferred), co-current, or
+   multi-pass with F-factor.
+3. Estimate U from either side's h (or vendor data); typical ranges:
+   liquid-liquid 300-1000 W/m²K, liquid-gas 30-100, condensing steam
+   2000-5000, boiling 1000-4000.
+4. Provide duty from one stream's sensible heat (m × cp × ΔT) or pass
+   the value if known.
+5. Run the script. Inspect area; round up to the nearest commercial
+   bundle size.
+6. Cross-check by computing the other stream's duty and verifying the
+   energy balance closes.
+
+## Common Mistakes
+
+- Using bare LMTD without the F-factor for multi-pass exchangers.
+- Picking U from a textbook table without flagging the fouling
+  factor (overstates U).
+- Forgetting that LMTD blows up to ±infinity when terminal differences
+  approach zero (temperature pinch).
+- Using sensible-heat duty for a two-phase service (latent heat
+  dominates).
+- Reporting required area without acknowledging the fouling allowance.
+- Choosing LMTD when one stream is isothermal (condensing / boiling) and
+  using F = 1 by default. Even for single-phase the F-factor is < 1 for
+  multi-pass.
+- Picking shell-and-tube as default; for liquid-liquid services with low
+  fouling, a plate-and-frame is often smaller and cheaper.
+- Treating the calculated area as final without vendor-validated TEMA
+  layout and pressure-drop check.
+
+## Fallback Strategies
+
+- If `ht.LMTD` is unavailable, the script falls back to the direct LMTD
+  formula and flags the substitution.
+- If only one stream's enthalpy data is supplied, the script computes the
+  matching cold/hot side from the energy balance, but only when
+  arrangement allows it.
+
+## References
+
+- `references/methods.md` — assumptions, formulas, and U ranges.
+- TEMA standards (procure separately).
+- Sinnott / Coulson & Richardson Vol 6 for U guidance.
 
 ## Anti-Patterns
 
-- Treating preliminary calculations as final design.
-- Hiding unit conversions or basis assumptions.
-- Reproducing proprietary standards or vendor tables.
-- Presenting estimates without uncertainty/validity notes.
+- Reporting required area without specifying U and fouling factors.
+- Using LMTD with widely different specific heats across the exchanger
+  (Cp varies strongly with T).
+- Sizing without checking the temperature pinch.

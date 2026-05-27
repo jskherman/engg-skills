@@ -1,34 +1,76 @@
 ---
 name: uv
 description: >-
-  Ensure the uv Python runner is available for engineering skill scripts. Use when a user asks for chemical engineering, process engineering, applied science, or statistics work matching this scope.
+  Confirm the `uv` Python package manager is installed and available on
+  PATH and document the standard `uv run script.py --output ...` invocation
+  used by every other skill in this repository. Use as a prerequisite check
+  before invoking any other engineering skill. Don't use as a substitute
+  for actually running a skill — it does no engineering work itself.
 ---
 
-# Uv
+# uv (Python runner)
 
 ## Overview
 
-Ensure the uv Python runner is available for engineering skill scripts.
+Every other skill in this repository runs its scripts via `uv run`
+(PEP-723 inline dependency declaration). This skill is a one-page check:
+"is `uv` on PATH, and if not, how do you install it?"
 
-## Core Rules
+## Use when
 
-- Prefer the provided script for repeatable calculations or data access.
-- Require explicit units and assumptions; never invent missing physical property data.
-- Write machine-readable outputs to JSON when a script is used.
-- Report assumptions, warnings, methods, and sources.
-- Keep proprietary standards, handbook tables, and copyrighted examples out of outputs unless the user supplies authorized excerpts.
+- Setting up the environment for the first time.
+- A skill invocation has failed with `uv: command not found`.
 
-## Workflow
+## Don't use for
 
-1. Identify the engineering question and required inputs.
-2. Check scope limits and safety/compliance implications.
-3. Run the relevant script or follow the documented method.
-4. Inspect warnings and validate units/magnitude.
-5. Summarize results with assumptions, limitations, and next verification steps.
+- Any engineering calculation.
+- Authoring a new skill (use `engineering-skill-creator` instead).
+
+## Setup
+
+If `uv` is missing, install it from https://docs.astral.sh/uv/ . The
+common path on Linux/macOS:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+On Windows (PowerShell):
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+Then verify:
+
+```bash
+uv --version
+```
+
+## Conventions
+
+- Every script in this repository is invoked as
+  `uv run <path>/scripts/<name>.py <subcommand> --<flag> <value> --output /tmp/<name>.json`.
+- The script header declares dependencies inline (PEP-723); `uv run` will
+  install them the first time and cache for subsequent runs.
+- Stdout is reserved for a single success message; results live in the
+  JSON file at `--output`.
+
+## Common Mistakes
+
+- Trying to `python` a script directly rather than `uv run`; the script
+  header won't be respected.
+- Running scripts from a different working directory than the skill folder
+  — works, but path-based imports of `engg_skills_common` use the script's
+  own directory, which is robust.
+
+## References
+
+- https://docs.astral.sh/uv/
+- https://github.com/astral-sh/uv
 
 ## Anti-Patterns
 
-- Treating preliminary calculations as final design.
-- Hiding unit conversions or basis assumptions.
-- Reproducing proprietary standards or vendor tables.
-- Presenting estimates without uncertainty/validity notes.
+- Installing `uv` globally with `sudo`; let the install script handle it.
+- Pinning `uv` versions in skill scripts; the PEP-723 dependencies pin the
+  Python deps, and `uv` itself should be free to update.
