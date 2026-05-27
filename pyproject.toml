@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "engg-skills"
+version = "0.1.0"
+description = "Agent skills for chemical engineering, process engineering, applied sciences, and engineering statistics."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [
+  { name = "Jesh", email = "jskherman@users.noreply.github.com" }
+]
+keywords = ["agent-skills", "chemical-engineering", "process-engineering", "statistics"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering"
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+where = ["skills/engg_skills_common"]
+include = ["engg_skills_common*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

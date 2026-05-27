@@ -1,0 +1,11 @@
+{
+  "name": "engg-skills",
+  "version": "0.1.0",
+  "description": "Curated collection of agent skills for chemical engineering, process engineering, applied sciences, and engineering statistics.",
+  "author": {
+    "name": "Jesh",
+    "github": "jskherman"
+  },
+  "repository": "https://github.com/jskherman/engg-skills",
+  "license": "Apache-2.0"
+}

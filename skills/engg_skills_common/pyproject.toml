@@ -1,0 +1,10 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "engg-skills-common"
+version = "0.1.0"
+description = "Shared utilities for engg-skills scripts"
+requires-python = ">=3.11"
+license = "Apache-2.0"
