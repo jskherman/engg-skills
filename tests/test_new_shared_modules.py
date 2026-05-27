@@ -17,6 +17,7 @@ from engg_skills_common.coda import (
     sbp_to_psi,
 )
 from engg_skills_common.convection import dittus_boelter, gnielinski
+from engg_skills_common.io import parse_number_list
 from engg_skills_common.merox import (
     disulfide_carryback_risk,
     extractor_kremser,
@@ -45,6 +46,13 @@ from engg_skills_common.valves import api520_gas_relief_area, api520_liquid_reli
 from engg_skills_common.vle import rachford_rice
 
 
+# --- I/O parsing ----------------------------------------------------------------
+
+
+def test_parse_number_list_accepts_whitespace_semicolon_and_commas():
+    assert parse_number_list("1 2,3; 4\n5") == [1.0, 2.0, 3.0, 4.0, 5.0]
+
+
 # --- Compositional Data Analysis ---------------------------------------------
 
 
@@ -68,6 +76,16 @@ def test_zero_replacement_preserves_sum():
     replaced = multiplicative_replacement(x, delta=1e-4)
     assert math.isclose(sum(replaced), 1.0, abs_tol=1e-6)
     assert all(v > 0 for v in replaced)
+
+
+def test_zero_replacement_rejects_all_zero_composition():
+    with pytest.raises(ValueError):
+        multiplicative_replacement([0.0, 0.0, 0.0])
+
+
+def test_zero_replacement_rejects_too_large_delta():
+    with pytest.raises(ValueError):
+        multiplicative_replacement([0.0, 0.0, 1.0], delta=0.5)
 
 
 def test_heavy_end_balance_signs():
@@ -194,6 +212,16 @@ def test_batch_time_first_order_matches_pfr_tau():
     assert math.isclose(pfr["tau_residence_s"], batch["time_s"], rel_tol=1e-9)
 
 
+def test_second_order_pfr_and_batch_are_positive_and_match():
+    pfr = pfr_volume_nth_order(C0=1000, conversion=0.9, flow_m3_s=0.001, k=5e-4, order=2.0)
+    batch = batch_time_nth_order(C0=1000, conversion=0.9, k=5e-4, order=2.0)
+    expected_tau = (1 / (1000 * (1 - 0.9)) - 1 / 1000) / 5e-4
+    assert pfr["tau_residence_s"] > 0
+    assert batch["time_s"] > 0
+    assert math.isclose(pfr["tau_residence_s"], expected_tau, rel_tol=1e-12)
+    assert math.isclose(batch["time_s"], expected_tau, rel_tol=1e-12)
+
+
 # --- Amine / Merox -----------------------------------------------------------
 
 
@@ -271,6 +299,18 @@ def test_rachford_rice_two_phase():
     ys = res["ys"]
     assert math.isclose(sum(xs), 1.0, abs_tol=1e-6)
     assert math.isclose(sum(ys), 1.0, abs_tol=1e-6)
+
+
+def test_rachford_rice_subcooled_even_when_some_k_above_one():
+    res = rachford_rice([1.1, 0.1], [0.01, 0.99])
+    assert res["vapor_fraction"] == 0.0
+    assert res["regime"] == "subcooled-liquid"
+
+
+def test_rachford_rice_superheated_even_when_some_k_below_one():
+    res = rachford_rice([10.0, 0.9], [0.99, 0.01])
+    assert res["vapor_fraction"] == 1.0
+    assert res["regime"] == "superheated-vapor"
 
 
 def test_rachford_rice_single_phase():
