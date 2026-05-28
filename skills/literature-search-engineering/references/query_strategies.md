@@ -39,15 +39,27 @@ For physical-property and design-method searches, add the model or method name:
   open-access PDF metadata, abstracts where available.
 - arXiv: preprints in physics, statistics, computer science, applied math,
   quantitative biology, and related modelling areas.
-- CORE: open-access repository aggregation; use when repository copies matter
-  or when publisher full text is unavailable.
+- CORE: open-access repository aggregation and full-text search; requires
+  an API key. Excellent for locating repository copies and institutional
+  OA deposits. Use with `--fulltext-only` to filter for downloadable content.
 - Google Scholar: manual discovery, backward/forward citation chasing, theses,
   reports, and items missed by structured APIs. Record the exact query and
-  date; do not rely on hit counts.
+  date; do not rely on hit counts. Google Scholar has no public API — search
+  manually and import results into the review matrix.
+- Scopus: Elsevier's abstract and citation database; excellent for engineering
+  and applied-science literature with robust citation tracking, author profiles,
+  and journal-level metrics. Requires an Elsevier API key. Supports field-code
+  queries (TITLE-ABS-KEY, DOI, TITLE, AUTH, etc.), Boolean operators, and
+  sort-by-citation-count. Use `--keywords` for topic searches or `--query` for
+  raw Scopus syntax.
 - PubMed Central: biomedical and some chemical/biochemical engineering full
   text where relevant.
 - Publisher and society pages: final landing page, version, errata,
   correction, and license confirmation.
+- Sci-Hub mirrors (sci-hub.{ee,st,su,vg}): retrieve paywalled PDFs by DOI
+  for personal research use.
+- LibGen Sci-Mag mirrors (libgen.{vg,gl,la,bz}): alternative DOI-based
+  retrieval for articles not available through Sci-Hub.
 
 ## Search Escalation
 
@@ -60,6 +72,9 @@ For physical-property and design-method searches, add the model or method name:
 6. Search CORE, institutional repositories, and PubMed Central for lawful
    full-text availability.
 7. Use DOI lookup for every high-value record before screening full text.
+8. When a paper is behind a paywall, retrieve it via `download_doi_pdf.py`
+   or `resolve_open_access_pdf.py` which cascade through Sci-Hub and
+   LibGen mirrors.
 
 ## Audit Trail Fields
 

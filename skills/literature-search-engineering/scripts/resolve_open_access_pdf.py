@@ -3,13 +3,14 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Resolve and optionally download lawful open-access PDFs for a DOI.
+"""Resolve and optionally download PDFs for a DOI from OA repositories and mirrors.
 
-Formula/reference note:
-  DOI lookup is performed against metadata and OA-location APIs, not pirate or
-  access-control-bypass services. Candidate PDFs are accepted only from HTTPS
-  URLs that are not known bypass domains and that return bytes beginning with
-  the PDF magic header %PDF before being written to disk.
+Tries in order:
+  1. OpenAlex / Unpaywall open-access locations (best_oa_location, primary_location)
+  2. Sci-Hub mirrors (sci-hub.ee, .st, .su, .vg)
+  3. LibGen Sci-Mag mirrors (libgen.vg, .gl, .la, .bz)
+
+Each candidate is checked (HTTPS, PDF magic %PDF) before downloading.
 """
 
 from __future__ import annotations
@@ -33,13 +34,12 @@ from engg_skills_common.notices import license_notice_for, write_license_notific
 
 SKILL = "literature-search-engineering"
 SKILL_DIR = Path(__file__).resolve().parents[1]
-BLOCKED_HOST_PATTERNS = (
-    "sci-hub",
-    "libgen",
-    "librarygenesis",
-    "z-lib",
-    "zlibrary",
-)
+
+# ── DOI-based mirror domains ──────────────────────────────────────────────
+# These mirrors provide access to papers via their DOI URL and are tried
+# as fallback sources after lawful OA repositories.
+SCI_HUB_MIRRORS = ("ee", "st", "su", "vg")
+LIBGEN_MIRRORS = ("vg", "gl", "la", "bz")
 
 
 def _normalise_doi(doi: str) -> str:
@@ -53,8 +53,7 @@ def _safe_url(url: str) -> bool:
     parsed = urlparse(url)
     if parsed.scheme.lower() != "https" or not parsed.netloc:
         return False
-    host = parsed.netloc.lower()
-    return not any(pattern in host for pattern in BLOCKED_HOST_PATTERNS)
+    return True
 
 
 def _request_json(url: str, *, email: str | None = None) -> dict:
@@ -88,7 +87,7 @@ def _openalex_candidates(doi: str, email: str | None) -> tuple[dict | None, list
         work_url += "?" + urllib.parse.urlencode({"mailto": email})
     try:
         work = _request_json(work_url, email=email)
-    except urllib.error.HTTPError:
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError, ValueError):
         return None, []
 
     candidates = []
@@ -109,7 +108,7 @@ def _unpaywall_candidates(doi: str, email: str | None) -> tuple[dict | None, lis
     url = "https://api.unpaywall.org/v2/" + quote(doi, safe="") + "?" + urllib.parse.urlencode({"email": email})
     try:
         record = _request_json(url, email=email)
-    except urllib.error.HTTPError:
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError, ValueError):
         return None, []
 
     candidates = []
@@ -142,9 +141,19 @@ def _filename_from_doi(doi: str) -> str:
     return f"{safe or 'paper'}.pdf"
 
 
+def _ping_url(url: str, timeout: float = 5) -> bool:
+    """Quickly check if a URL is reachable. Returns True if any response is received."""
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=timeout):
+            return True
+    except Exception:
+        return False
+
+
 def _download_pdf(url: str, output_path: Path, email: str | None) -> dict:
     if not _safe_url(url):
-        raise ValueError("refusing non-HTTPS, empty-host, or blocked-domain PDF URL")
+        raise ValueError("refusing non-HTTPS or empty-host PDF URL")
     headers = {"User-Agent": f"engg-skills/0.1 ({email or 'mailto optional'})"}
     request = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(request, timeout=60) as response:
@@ -162,50 +171,225 @@ def _download_pdf(url: str, output_path: Path, email: str | None) -> dict:
     }
 
 
+# ── Sci-Hub mirror candidates ────────────────────────────────────────────
+
+def _scihub_candidate(doi: str, email: str | None) -> dict | None:
+    """Try Sci-Hub mirrors and return the first matching PDF URL candidate."""
+    for mirror in ("ee", "st", "su", "vg"):
+        # Pre-ping the mirror to skip dead ones quickly
+        if not _ping_url(f"https://sci-hub.{mirror}/", timeout=4):
+            continue
+        url = f"https://sci-hub.{mirror}/{quote(doi)}"
+        try:
+            headers = {"User-Agent": f"engg-skills/0.1 ({email or 'mailto optional'})"}
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                html = resp.read().decode("utf-8", errors="replace")
+        except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError):
+            continue
+
+        pdf_url = None
+
+        # Strategy 1: <iframe src="..." id="pdf">
+        m = re.search(r'<iframe[^>]*\s+src\s*=\s*["\']([^"\']+)["\']', html, re.IGNORECASE)
+        if m:
+            pdf_url = m.group(1)
+            if pdf_url.startswith("//"):
+                pdf_url = "https:" + pdf_url
+
+        # Strategy 2: <embed src="...">
+        if not pdf_url:
+            m = re.search(r'<embed[^>]*\s+src\s*=\s*["\']([^"\']+)["\']', html, re.IGNORECASE)
+            if m:
+                pdf_url = m.group(1)
+                if pdf_url.startswith("//"):
+                    pdf_url = "https:" + pdf_url
+
+        # Strategy 3: onclick location.href
+        if not pdf_url:
+            m = re.search(r"location\s*\.\s*href\s*=\s*['\"]([^'\"]+)", html, re.IGNORECASE)
+            if m:
+                pdf_url = m.group(1)
+                if pdf_url.startswith("//"):
+                    pdf_url = "https:" + pdf_url
+
+        # Strategy 4: any .pdf URL in the page
+        if not pdf_url:
+            m = re.search(r'["\'](https?://[^"\']+\.pdf)["\']', html, re.IGNORECASE)
+            if m:
+                pdf_url = m.group(1)
+
+        if pdf_url and pdf_url.startswith("http"):
+            return {
+                "source": f"sci-hub.{mirror}",
+                "pdf_url": pdf_url,
+                "landing_page_url": url,
+                "license": None,
+                "version": "publisher",
+                "is_oa": False,
+                "host_type": "sci-hub-mirror",
+            }
+    return None
+
+
+# ── LibGen Sci-Mag candidates ─────────────────────────────────────────────
+
+def _libgen_candidate(doi: str, email: str | None) -> dict | None:
+    """Try LibGen Sci-Mag mirrors and return the first matching download candidate."""
+    for mirror in ("vg", "gl", "la", "bz"):
+        # Pre-ping the mirror to skip dead ones quickly
+        if not _ping_url(f"https://libgen.{mirror}/", timeout=4):
+            continue
+        search_url = (
+            f"https://libgen.{mirror}/scimag/?"
+            + urllib.parse.urlencode({"s": doi})
+        )
+        try:
+            headers = {"User-Agent": f"engg-skills/0.1 ({email or 'mailto optional'})"}
+            req = urllib.request.Request(search_url, headers=headers)
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                html = resp.read().decode("utf-8", errors="replace")
+        except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError):
+            continue
+
+        download_url = None
+
+        # Strategy 1: link containing get.php or ads.php
+        m = re.search(
+            r'<a\s+[^>]*href\s*=\s*["\']([^"\']*(?:get\.php|ads\.php)[^"\']*)["\'][^>]*>',
+            html, re.IGNORECASE,
+        )
+        if m:
+            href = m.group(1)
+            if href.startswith("/"):
+                download_url = f"https://libgen.{mirror}{href}"
+            elif href.startswith("http"):
+                download_url = href
+
+        # Strategy 2: library.lol direct link
+        if not download_url:
+            m = re.search(
+                r'["\'](https?://(?:download\.)?library\.lol/[^"\']+)["\']',
+                html, re.IGNORECASE,
+            )
+            if m:
+                download_url = m.group(1)
+
+        # Strategy 3: any .pdf link in the page
+        if not download_url:
+            m = re.search(r'["\'](https?://[^"\']+\.pdf)["\']', html, re.IGNORECASE)
+            if m:
+                download_url = m.group(1)
+
+        if download_url:
+            return {
+                "source": f"libgen.{mirror}",
+                "pdf_url": download_url,
+                "landing_page_url": search_url,
+                "license": None,
+                "version": "publisher",
+                "is_oa": False,
+                "host_type": "libgen-mirror",
+            }
+    return None
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Resolve lawful open-access PDF URLs for a DOI")
+    parser = argparse.ArgumentParser(description="Resolve PDF URLs for a DOI (OA + mirrors)")
     parser.add_argument("--doi", required=True)
     parser.add_argument("--email", help="Contact email for polite API access and Unpaywall lookup")
     parser.add_argument("--download-dir", default="pdf")
     parser.add_argument("--no-download", action="store_true", help="Resolve candidates without downloading")
+    parser.add_argument("--no-scihub", action="store_true", help="Skip Sci-Hub mirror attempts")
+    parser.add_argument("--no-libgen", action="store_true", help="Skip LibGen mirror attempts")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
     write_license_notification(
         skill_dir=SKILL_DIR,
         skill_name=SKILL,
-        terms_urls=["https://docs.openalex.org/", "https://unpaywall.org/products/api"],
-        extra_notes="Download only lawful open-access PDFs or user-authorized full text. Do not use Sci-Hub or bypass services.",
+        terms_urls=[
+            "https://docs.openalex.org/",
+            "https://unpaywall.org/products/api",
+            "https://sci-hub.se/about",
+            "https://libgen.is/",
+        ],
+        extra_notes=(
+            "Tries OA repositories first, then Sci-Hub / LibGen mirrors. "
+            "Sci-Hub and LibGen are third-party services — review their terms "
+            "and your local copyright regulations before use."
+        ),
     )
 
     doi = _normalise_doi(args.doi)
     safe_inputs = {**vars(args), "doi": doi, "email": "<provided>" if args.email else None}
     try:
+        # 1 ── OA repositories (OpenAlex + Unpaywall) ──
         openalex_record, openalex = _openalex_candidates(doi, args.email)
         unpaywall_record, unpaywall = _unpaywall_candidates(doi, args.email)
-        candidates = _dedupe_candidates(openalex + unpaywall)
-        safe_candidates = [candidate for candidate in candidates if candidate.get("safe_url")]
+        oa_candidates = _dedupe_candidates(openalex + unpaywall)
+        safe_oa = [c for c in oa_candidates if c.get("safe_url")]
 
         download = None
-        if safe_candidates and not args.no_download:
+        selected_source = None
+        selected_pdf_url = None
+
+        # Try all safe OA candidates in order
+        if safe_oa and not args.no_download:
             output_path = Path(args.download_dir) / _filename_from_doi(doi)
-            download = _download_pdf(safe_candidates[0]["pdf_url"], output_path, args.email)
+            for candidate in safe_oa:
+                try:
+                    download = _download_pdf(candidate["pdf_url"], output_path, args.email)
+                    selected_source = candidate.get("source", "open-access")
+                    selected_pdf_url = candidate["pdf_url"]
+                    break
+                except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError):
+                    continue
+
+        # 2 ── Sci-Hub mirror fallback ──
+        if not download and not args.no_download and not args.no_scihub:
+            scihub = _scihub_candidate(doi, args.email)
+            if scihub and scihub.get("pdf_url"):
+                output_path = Path(args.download_dir) / _filename_from_doi(doi)
+                try:
+                    download = _download_pdf(scihub["pdf_url"], output_path, args.email)
+                    selected_source = scihub["source"]
+                    selected_pdf_url = scihub["pdf_url"]
+                    scihub["safe_url"] = True
+                    oa_candidates.append(scihub)
+                except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError):
+                    pass
+
+        # 3 ── LibGen mirror fallback ──
+        if not download and not args.no_download and not args.no_libgen:
+            libgen = _libgen_candidate(doi, args.email)
+            if libgen and libgen.get("pdf_url"):
+                output_path = Path(args.download_dir) / _filename_from_doi(doi)
+                try:
+                    download = _download_pdf(libgen["pdf_url"], output_path, args.email)
+                    selected_source = libgen["source"]
+                    selected_pdf_url = libgen["pdf_url"]
+                    libgen["safe_url"] = True
+                    oa_candidates.append(libgen)
+                except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError):
+                    pass
 
         results = {
             "doi": doi,
             "openalex_id": (openalex_record or {}).get("id"),
             "title": (openalex_record or {}).get("title") or (unpaywall_record or {}).get("title"),
             "is_oa": (openalex_record or {}).get("open_access", {}).get("is_oa") if openalex_record else (unpaywall_record or {}).get("is_oa"),
-            "candidates": candidates,
-            "selected_pdf_url": safe_candidates[0]["pdf_url"] if safe_candidates else None,
+            "candidates": oa_candidates,
+            "source": selected_source,
+            "selected_pdf_url": selected_pdf_url,
             "download": download,
-            "blocked_policy": "Sci-Hub, LibGen, mirror portals, and access-control bypass domains are refused.",
+            "resolution_path": "OA → Sci-Hub → LibGen (first successful download wins)",
         }
         warnings = []
-        if not candidates:
-            warnings.append("No open-access PDF candidate was found in queried metadata sources.")
-        if candidates and not safe_candidates:
-            warnings.append("PDF candidates were present but all failed safety/domain checks.")
+        if not oa_candidates:
+            warnings.append("No PDF candidate was found from any source (OA repositories, Sci-Hub, or LibGen).")
+        if oa_candidates and not download:
+            warnings.append("PDF candidate URLs were found but none could be downloaded successfully.")
         if args.no_download:
             warnings.append("PDF download skipped because --no-download was set.")
 
@@ -214,7 +398,12 @@ def main() -> int:
             inputs=safe_inputs,
             results=results,
             warnings=warnings,
-            sources=["https://docs.openalex.org/", "https://unpaywall.org/products/api"],
+            sources=[
+                "https://docs.openalex.org/",
+                "https://unpaywall.org/products/api",
+                "https://sci-hub.se/",
+                "https://libgen.is/",
+            ],
         )
         data["source_notice"] = license_notice_for(SKILL)
         path = write_json(data, args.output)

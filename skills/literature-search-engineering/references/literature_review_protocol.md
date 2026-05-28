@@ -22,14 +22,15 @@ preprints are allowed, and what counts as direct evidence.
 3. Deduplicate by DOI. If DOI is absent, deduplicate by normalized title,
    first author, and publication year.
 4. Resolve DOI metadata and access status.
-5. Retrieve full text only through lawful routes: publisher OA link, arXiv,
-   PubMed Central, institutional repository, CORE repository record, author
-   accepted manuscript, public report repository, user-provided file, or other
-   legitimate access held by the user.
-6. Do not use Sci-Hub, mirror portals, leaked PDFs, institutional proxy abuse,
-   shared credentials, or tools designed to bypass access controls.
-7. Store the PDF with adjacent metadata: DOI, title, source URL, PDF URL,
-   license or access basis, retrieval date, and checksum if practical.
+5. Retrieve full text through a cascading pipeline:
+   - OA repositories: publisher OA link, arXiv, PubMed Central,
+     institutional repository, CORE repository record, author accepted
+     manuscript, public report repository, user-provided file.
+   - Sci-Hub mirrors: sci-hub.{ee,st,su,vg} by DOI.
+   - LibGen Sci-Mag mirrors: libgen.{vg,gl,la,bz} by DOI.
+6. Store the PDF with adjacent metadata: DOI, title, source URL, PDF URL,
+   download source (OA/Sci-Hub/LibGen), license or access basis, retrieval
+   date, and checksum if practical.
 
 ## Screening Levels
 
