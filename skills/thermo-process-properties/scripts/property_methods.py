@@ -8,7 +8,11 @@ import argparse, sys
 from pathlib import Path
 COMMON_ROOT = Path(__file__).resolve().parents[2] / "engg-skills-common"; sys.path.insert(0, str(COMMON_ROOT))
 from engg_skills_common.io import parse_number_list, result_envelope, write_json
+from engg_skills_common.notices import license_notice_for, write_license_notification
 from engg_skills_common.property_backends import (costald_liquid_density, get_lpg_constants, iapws95_state, iapws_saturation, pr_translated_lpg_eos, recommend_property_method)
+
+SKILL = "thermo-process-properties"
+SKILL_DIR = Path(__file__).resolve().parents[1]
 
 def comps(text): return [c.strip() for c in text.split(',') if c.strip()]
 def constants_from_components(names): return get_lpg_constants(comps(names))
@@ -22,6 +26,13 @@ def main():
     sat=sub.add_parser('iapws-saturation'); sat.add_argument('--temperature-k', type=float); sat.add_argument('--pressure-pa', type=float); sat.add_argument('--output', required=True)
     e=sub.add_parser('pr-translated-eos'); e.add_argument('--components', required=True); e.add_argument('--zs', required=True); e.add_argument('--temperature-k', type=float, required=True); e.add_argument('--pressure-pa', type=float, required=True); e.add_argument('--output', required=True)
     a=p.parse_args()
+    write_license_notification(
+        skill_dir=SKILL_DIR,
+        skill_name=SKILL,
+        terms_urls=["https://thermo.readthedocs.io/", "https://chemicals.readthedocs.io/"],
+        library_attributions=["thermo (Caleb Bell) — MIT", "chemicals (Caleb Bell) — MIT"],
+        extra_notes="Validate property-method results against lab data, plant data, or a trusted simulator before design use.",
+    )
     try:
         warnings=[]; sources=[]
         if a.command=='recommend':
@@ -34,7 +45,8 @@ def main():
             res=iapws_saturation(T=a.temperature_k, P=a.pressure_pa); sources=['chemicals.iapws.Psat_IAPWS', 'chemicals.iapws.Tsat_IAPWS']
         else:
             const=constants_from_components(a.components); res=pr_translated_lpg_eos(T=a.temperature_k, P=a.pressure_pa, zs=parse_number_list(a.zs), Tcs=const['Tcs'], Pcs=const['Pcs'], omegas=const['omegas']); warnings=res.pop('warnings', []); sources=['thermo.eos_mix.PRMIXTranslatedPPJP']
-        data=result_envelope(skill='thermo-process-properties', inputs=vars(a), results=res, warnings=warnings, sources=sources)
+        data=result_envelope(skill=SKILL, inputs=vars(a), results=res, warnings=warnings, sources=sources)
+        data["source_notice"] = license_notice_for(SKILL)
         path=write_json(data, a.output); print(f'Success. JSON written to: {path}'); return 0
     except Exception as exc:
         write_json(result_envelope(skill='thermo-process-properties', inputs=vars(a), results={'error':str(exc)}, ok=False), a.output); print(f'Error. JSON written to: {a.output}', file=sys.stderr); return 1

@@ -1,12 +1,11 @@
 ---
 name: material-energy-balances
 description: >-
-  Compute steady-state component and total mass balance residuals,
-  conversion / selectivity / yield, and degree-of-freedom counts for a
-  process node. Use when checking that a stream table closes or sanity-
-  checking a simulation export. Don't use for dynamic / transient
-  balances (different math; use a state-space solver) or as a substitute
-  for a flowsheet simulator's rigorous closure.
+  Compute simple component totals and reaction conversion / yield metrics for
+  steady-state process calculations. Use when summing stream component
+  amounts or sanity-checking reaction metrics. Don't use for full inlet/outlet
+  balance residuals, degree-of-freedom analysis, dynamic / transient balances,
+  or as a substitute for a flowsheet simulator's rigorous closure.
 version: 1.0.0
 license: Apache-2.0
 compatibility: >-
@@ -22,15 +21,11 @@ metadata:
 
 ## Overview
 
-Steady-state balance helpers:
+Steady-state helper calculations:
 
-- Component mass balance residual for one node (inlets - outlets, summed
-  per component).
-- Total mass balance residual.
-- Conversion, selectivity, yield computed from inlet/outlet component
-  flows.
-- Degree-of-freedom (DoF) counter for a node, given the number of streams,
-  components, and specifications.
+- Component totals from one or more `NAME=amount` entries.
+- Conversion and yield from supplied limiting-reactant and product amounts.
+- JSON envelopes that make the basis and assumptions explicit.
 
 ## Prerequisites
 
@@ -38,10 +33,10 @@ Steady-state balance helpers:
 
 ## When to Use
 
-- Checking that a hand-built stream table closes.
-- Sanity-checking a flowsheet export (mole or mass basis).
-- Counting unknowns vs equations before deciding whether the problem is
-  solvable.
+- Summing component amounts from a hand-built stream table.
+- Sanity-checking a single stream or component set on a consistent basis.
+- Computing rough conversion and yield metrics from known feed/reacted/product
+  amounts.
 
 ## Don't use for
 
@@ -49,21 +44,23 @@ Steady-state balance helpers:
   state-space approach.
 - Rigorous flowsheet convergence; use a simulator.
 - Detailed equilibrium / reactor design; this skill is balance-only.
+- Full node closure with separate inlet and outlet stream tables.
+- Degree-of-freedom counting.
+- Selectivity calculations; only conversion and yield are exposed by the CLI.
 
 ## Utility Scripts
 
-- `uv run scripts/balance_solver.py --inlets "feed:A=10,B=5" --outlets "vap:A=2,B=1;liq:A=8,B=4" --output /tmp/bal.json`
+- `uv run scripts/balance_solver.py component-total --stream A=10 --stream B=5 --output /tmp/total.json`
+- `uv run scripts/balance_solver.py reaction-metrics --feed-limiting 10 --reacted-limiting 8 --desired-product 7.2 --theoretical-product 8 --output /tmp/reaction.json`
 
 ## Procedure
 
-1. Identify the node and its streams.
-2. List inlets and outlets with per-component flow rates (mol/s or kg/s,
-   consistent basis).
-3. Run the script. Inspect the per-component residual.
-4. If residual is non-zero, look for: missing recycle, missing stream,
-   wrong basis (mol vs mass), or an actual instrument bias.
-5. For conversion/selectivity/yield, supply reactant and key product
-   flows.
+1. Identify the stream, component set, or reaction metric you need.
+2. Keep all values on a consistent molar or mass basis.
+3. For totals, pass each component amount as a repeated `--stream NAME=amount`.
+4. For conversion/yield, supply limiting-reactant feed, reacted amount,
+   desired product amount, and theoretical product amount.
+5. Inspect the JSON assumptions before using the result in a larger balance.
 
 ## Pitfalls
 

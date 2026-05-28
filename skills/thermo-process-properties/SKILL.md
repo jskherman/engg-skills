@@ -21,7 +21,7 @@ metadata:
     category: thermodynamics
 ---
 
-# Thermodynamic and Transport Property Calculations
+# Thermodynamic Property Calculations
 
 ## Overview
 

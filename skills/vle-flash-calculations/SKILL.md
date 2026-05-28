@@ -1,7 +1,7 @@
 ---
 name: vle-flash-calculations
 description: >-
-  Run vapor-liquid (and vapor-liquid-liquid) flash calculations, dew/bubble
+  Run vapor-liquid flash calculations, dew/bubble
   point solves, and Rachford-Rice K-value flashes for hydrocarbon, sour-gas,
   and light-process mixtures using Caleb Bell's `thermo` package. Use when
   the user needs phase split, K-values, dew/bubble pressure or temperature,
@@ -70,7 +70,7 @@ K-values are available.
 - `uv run scripts/flash.py bubble --components propane,n-butane --zs 0.4,0.6 --T-K 300 --eos PR --output /tmp/bubble.json`
 - `uv run scripts/flash.py dew --components propane,n-butane --zs 0.4,0.6 --T-K 320 --eos PR --output /tmp/dew.json`
 - `uv run scripts/flash.py rr --Ks 4.2,0.6 --zs 0.4,0.6 --output /tmp/rr.json`
-- `uv run scripts/flash.py envelope --components propane,n-butane --zs 0.5,0.5 --T-K-list 280,290,300,310,320 --eos PR --output /tmp/envelope.json`
+- `uv run scripts/flash.py envelope --components propane,n-butane --zs 0.5,0.5 --T-K-list 280,290,300,310,320 --P-Pa 800000 --eos PR --output /tmp/envelope.json`
 
 ## Procedure
 

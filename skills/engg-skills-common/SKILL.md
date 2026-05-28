@@ -64,6 +64,12 @@ lazily inside the scripts that need them.
   a clear `RuntimeError` via `_require_library`.
 - Names are descriptive with unit suffixes (e.g. `rho_kg_m3` not `rho`).
 
+## Procedure
+
+1. Read this SKILL.md and any referenced files needed for the task.
+2. Use scripts from `scripts/` when a deterministic calculation or check is available.
+3. Preserve stated assumptions, warnings, and scope limits in the final answer.
+
 ## Pitfalls
 
 - Adding a heavy dependency import at the top of a module instead of
@@ -79,12 +85,6 @@ lazily inside the scripts that need them.
 Tests live in `tests/`. Each module should have a dedicated
 `test_<module>.py` with at least three tests covering: a typical case,
 an edge case (zero / empty), and an error case.
-
-## Procedure
-
-1. Read this SKILL.md and any referenced files needed for the task.
-2. Use scripts from `scripts/` when a deterministic calculation or check is available.
-3. Preserve stated assumptions, warnings, and scope limits in the final answer.
 
 ## Verification
 

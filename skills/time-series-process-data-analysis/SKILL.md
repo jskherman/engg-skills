@@ -3,16 +3,16 @@ name: time-series-process-data-analysis
 description: >-
   Estimate the sample autocorrelation (ACF), partial autocorrelation (PACF),
   and run a moving-block bootstrap for autocorrelation-aware confidence
-  intervals on statistics of process time series. Use when computing CIs on
-  any statistic from autocorrelated process data (means, regression
-  coefficients, control-chart limits). Don't use for stationary white-noise
-  data (use engineering-statistics) or for forecasting (use a dedicated
-  time-series model).
+  intervals on selected statistics of process time series. Use when computing
+  CIs for supported statistics from autocorrelated process data. Don't use for
+  stationary white-noise data (use engineering-statistics) or for forecasting
+  (use a dedicated time-series model).
 version: 1.0.0
 license: Apache-2.0
 compatibility: >-
-  Compatible with Agent Skills clients and Hermes Agent; Python 3.11+ and uv
-  are required for bundled Python scripts.
+  Compatible with Agent Skills clients and Hermes Agent; Python 3.11+, uv,
+  and native scientific Python runtime support for Pandas are required for
+  bundled scripts.
 metadata:
   hermes:
     tags: [statistics, process-data, data-analysis, time, series, process, data]
@@ -29,7 +29,8 @@ skill provides:
 
 - Sample ACF and PACF.
 - A simple block-length heuristic (`2 × first lag where |rho| < 2/sqrt(n)`).
-- Moving-block bootstrap (Kuensch 1989) for any user-supplied statistic.
+- Moving-block bootstrap (Kuensch 1989) for built-in statistics exposed by
+  the CLI: mean, median, standard deviation, minimum, and maximum.
 
 The ACF/PACF are useful for picking residual-autocorrelation orders for
 regressions and for selecting a sensible block length.
@@ -42,8 +43,7 @@ regressions and for selecting a sensible block length.
 ## When to Use
 
 - Computing a CI for the mean of a daily lab series.
-- Computing a CI for a regression coefficient where residuals are
-  autocorrelated.
+- Diagnosing autocorrelation before using a separate regression workflow.
 - Diagnosing the order of a residual AR(p) for ARIMA / DLM modelling.
 - Picking a block length for downstream block-bootstrap procedures.
 
@@ -68,7 +68,7 @@ regressions and for selecting a sensible block length.
    - For short series (< 200), constrain block length to ≤ n/4.
    - For long series, consider Politis-White optimal block length
      (not implemented; use `statsmodels` if needed).
-3. Choose your statistic (mean, regression coefficient, quantile, etc.).
+3. Choose a supported statistic (`mean`, `median`, `std`, `min`, or `max`).
 4. Run the bootstrap. Compare the bootstrap SE / CI against the i.i.d.
    counterpart; the bootstrap should be wider for positively autocorrelated
    data.

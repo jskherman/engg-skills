@@ -65,6 +65,12 @@ uv --version
 - Stdout is reserved for a single success message; results live in the
   JSON file at `--output`.
 
+## Procedure
+
+1. Read this SKILL.md and any referenced files needed for the task.
+2. Use scripts from `scripts/` when a deterministic calculation or check is available.
+3. Preserve stated assumptions, warnings, and scope limits in the final answer.
+
 ## Pitfalls
 
 - Trying to `python` a script directly rather than `uv run`; the script
@@ -72,12 +78,6 @@ uv --version
 - Running scripts from a different working directory than the skill folder
   — works, but path-based imports resolve `engg_skills_common` from the sibling
   `skills/engg-skills-common` folder, which is robust.
-
-## Procedure
-
-1. Read this SKILL.md and any referenced files needed for the task.
-2. Use scripts from `scripts/` when a deterministic calculation or check is available.
-3. Preserve stated assumptions, warnings, and scope limits in the final answer.
 
 ## Verification
 

@@ -48,8 +48,8 @@ Three established gas-liquid two-phase pressure-drop correlations from the
 
 - Single-phase pipe flow — use `pipe-flow-pressure-drop`.
 - Choked / sonic flow at a relief valve outlet — use `relief-valve-sizing-api520`.
-- Two-phase across a control valve — use `control-valve-sizing-isa75` with
-  flashing/cavitation indices.
+- Two-phase across a control valve — consult vendor methods; the control-valve
+  sizing skill only covers liquid/gas ISA sizing, not two-phase trim rating.
 
 ## Utility Scripts
 

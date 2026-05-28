@@ -2,11 +2,12 @@
 name: pipe-flow-pressure-drop
 description: >-
   Estimate single-phase incompressible pipe pressure drop, Reynolds number,
-  Darcy friction factor, and head loss for steady flow in straight runs.
+  Darcy friction factor, and head loss for steady pipe flow, with optional
+  minor-loss and elevation terms.
   Use when sizing a pump line, checking line size, or screening pressure
-  drop in straight pipes. Don't use for two-phase flow (use
-  two-phase-flow), compressible / choked flow, or fittings/valves pressure
-  drop (use a K-factor or Crane TP-410 method).
+  drop in pipes. Don't use for two-phase flow (use two-phase-flow),
+  compressible / choked flow, or detailed fittings/valves pressure-drop
+  selection without sourced K factors.
 version: 1.0.0
 license: Apache-2.0
 compatibility: >-
@@ -68,9 +69,10 @@ velocity, head loss, and pressure drop.
   schedule.
 - Using roughness too low (e.g. ε = 0 for smooth pipe) for commercial
   steel.
-- Forgetting elevation change; this skill returns frictional dP only.
-- Treating the result as the total dP across a system (it omits fittings,
-  valves, and entrance/exit losses).
+- Forgetting elevation change when the outlet elevation differs; pass
+  `--elevation-m` explicitly.
+- Treating the result as the total dP across a system unless you supplied
+  representative minor-loss K values and elevation change.
 - Using water properties for a hydrocarbon line.
 - Mixing kinematic and dynamic viscosity.
 - Reporting head loss in meters of water when the fluid is something else.

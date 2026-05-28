@@ -55,7 +55,7 @@ when the inputs fall outside common citations.
 ## Utility Scripts
 
 - `uv run scripts/calculate_dimensionless.py reynolds --density 1000 --velocity 1.5 --length 0.05 --viscosity 0.001 --output /tmp/re.json`
-- `uv run scripts/calculate_dimensionless.py prandtl --cp 4180 --viscosity 0.001 --conductivity 0.6 --output /tmp/pr.json`
+- `uv run scripts/calculate_dimensionless.py prandtl --cp 4180 --viscosity 0.001 --thermal-conductivity 0.6 --output /tmp/pr.json`
 - `uv run scripts/calculate_dimensionless.py nusselt-dittus-boelter --reynolds 50000 --prandtl 4 --output /tmp/nu.json`
 
 ## Procedure

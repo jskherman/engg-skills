@@ -48,11 +48,11 @@ explicitly.
 
 ## Utility Scripts
 
-- `uv run scripts/size_heat_exchanger.py --hot-in 423 --hot-out 363 --cold-in 298 --cold-out 363 --arrangement counterflow --overall-u-w-m2-k 500 --duty-w 1e6 --output /tmp/hx.json`
+- `uv run scripts/size_heat_exchanger.py --hot-in-c 150 --hot-out-c 90 --cold-in-c 25 --cold-out-c 90 --arrangement counterflow --u-w-m2-k 500 --duty-w 1e6 --output /tmp/hx.json`
 
 ## Procedure
 
-1. Define hot/cold inlet and outlet temperatures (K).
+1. Define hot/cold inlet and outlet temperatures (°C for the bundled script).
 2. Decide arrangement: counterflow (preferred), co-current, or
    multi-pass with F-factor.
 3. Estimate U from either side's h (or vendor data); typical ranges:

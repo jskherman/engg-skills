@@ -1,11 +1,11 @@
 ---
 name: convective-heat-transfer-correlations
 description: >-
-  Single-phase and basic two-phase convective heat transfer coefficient
-  correlations (Dittus-Boelter, Gnielinski, Sieder-Tate, Churchill-Chu
+  Single-phase convective heat transfer coefficient correlations
+  (Dittus-Boelter, Gnielinski, Sieder-Tate, Churchill-Chu
   natural convection, pool boiling via Rohsenow). Use when computing h for
   tube-side or shell-side flow, natural convection from a surface, or
-  screening boiling/condensation heat transfer. Don't use for shell-and-tube
+  screening pool-boiling heat transfer. Don't use for shell-and-tube
   full sizing (use heat-exchanger-sizing), or for low-quality two-phase
   pressure drop (use two-phase-flow).
 version: 1.0.0
@@ -62,6 +62,7 @@ plus a thin wrapper around `ht.boiling_nucleic.Rohsenow`:
 - `uv run scripts/h.py sieder-tate --Re 50000 --Pr 4.5 --k 0.6 --Dh 0.025 --mu-bulk 0.001 --mu-wall 0.0007 --output /tmp/st.json`
 - `uv run scripts/h.py laminar --regime constant-T --k 0.6 --Dh 0.025 --output /tmp/lam.json`
 - `uv run scripts/h.py natural --Ra 1e9 --Pr 0.7 --k 0.026 --L 1.0 --output /tmp/nc.json`
+- `uv run scripts/h.py boiling --T-sat 373.15 --T-wall 383.15 --P 101325 --k-l 0.68 --rho-l 958 --rho-g 0.6 --sigma 0.059 --cpl 4217 --dHvap 2257000 --mu-l 0.00028 --output /tmp/boil.json`
 
 ## Procedure
 

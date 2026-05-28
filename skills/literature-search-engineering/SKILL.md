@@ -11,8 +11,8 @@ description: >-
 version: 1.0.0
 license: Apache-2.0
 compatibility: >-
-  Compatible with Agent Skills clients and Hermes Agent; Python 3.11+ and uv
-  are required for bundled Python scripts.
+  Compatible with Agent Skills clients and Hermes Agent; Python 3.11+, uv,
+  and network access to OpenAlex/Crossref are required for bundled scripts.
 metadata:
   hermes:
     tags: [engineering, literature-search, research, literature, search]
@@ -53,8 +53,8 @@ purpose is to deliver:
 
 ## Utility Scripts
 
-- `uv run scripts/search_openalex.py --query "merox caustic mercaptan extraction" --rows 10 --output /tmp/oa.json`
-- `uv run scripts/search_crossref.py --query "Peng-Robinson volume translation hydrocarbon" --rows 10 --output /tmp/cr.json`
+- `uv run scripts/search_openalex.py --query "merox caustic mercaptan extraction" --limit 10 --output /tmp/oa.json`
+- `uv run scripts/search_crossref.py --query "Peng-Robinson volume translation hydrocarbon" --limit 10 --output /tmp/cr.json`
 
 ## Procedure
 

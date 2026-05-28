@@ -1,8 +1,8 @@
 ---
 name: steam-tables-iapws
 description: >-
-  Compute water and steam thermodynamic and transport properties using
-  the IAPWS-95 / IAPWS-IF97 formulation (via `chemicals.iapws`). Use when
+  Compute water and steam thermodynamic properties using
+  the IAPWS-95 utilities exposed by `chemicals.iapws`. Use when
   any calculation involves pure water or steam (turbine, boiler,
   condensate, reboiler, BFW system). Don't use for hydrocarbon systems
   (use vle-flash-calculations or thermo-process-properties), water +
@@ -23,8 +23,7 @@ metadata:
 
 ## Overview
 
-Water / steam properties via the IAPWS-95 scientific formulation
-(industrial work usually uses IAPWS-IF97). Implemented through
+Water / steam properties via the IAPWS-95 utilities exposed through
 `chemicals.iapws`:
 
 - Single-phase state (T, P): density, enthalpy, entropy, internal
@@ -40,8 +39,8 @@ Water / steam properties via the IAPWS-95 scientific formulation
 ## When to Use
 
 - Sizing a steam turbine, condenser, or reboiler.
-- BFW or condensate stream property work.
-- Computing steam quality / vapor fraction for a flash drum on pure water.
+- BFW or condensate stream property work at known temperature and pressure.
+- Saturation pressure from temperature, or saturation temperature from pressure.
 
 ## Don't use for
 
@@ -52,14 +51,12 @@ Water / steam properties via the IAPWS-95 scientific formulation
 
 ## Utility Scripts
 
-The IAPWS subcommands live in the `thermo-process-properties` skill:
-
-- `uv run scripts/property_methods.py iapws-state --temperature-k 773 --pressure-pa 1e7 --output /tmp/steam.json`
-- `uv run scripts/property_methods.py iapws-saturation --temperature-k 423 --output /tmp/sat.json`
+- `uv run scripts/steam_props.py --temperature-k 773 --pressure-pa 1e7 --output /tmp/steam.json`
+- `uv run scripts/steam_props.py --saturation --temperature-k 423 --output /tmp/sat.json`
 
 ## Procedure
 
-1. Identify the state (T, P, or T + quality).
+1. Identify the state (T and P) or the saturation calculation (T or P).
 2. Call the appropriate subcommand.
 3. Inspect the returned properties; if any value seems unphysical,
    recheck T and P bounds against the IAPWS validity range.
@@ -104,5 +101,5 @@ The IAPWS subcommands live in the `thermo-process-properties` skill:
 - Using IAPWS for any non-water system.
 - Quoting steam properties to four decimal places without naming the
   underlying formulation.
-- Mixing IF97 and IAPWS-95 within the same calculation without naming the
-  switch.
+- Mixing multiple water-property formulations within the same calculation
+  without naming the switch.

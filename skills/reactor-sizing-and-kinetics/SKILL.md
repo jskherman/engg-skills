@@ -97,7 +97,7 @@ Isothermal liquid-phase reactor design equations from first principles:
 ## Fallback Strategies
 
 - For arbitrary rate laws (Langmuir-Hinshelwood, Michaelis-Menten,
-  reversible reactions), use the `pfr --rate-fn` subcommand which accepts a
+  reversible reactions), use the `pfr-numeric --rate-fn` subcommand which accepts a
   Python expression in `C` (e.g. `0.5*C/(1+0.1*C)`).
 - For non-isothermal design, surface to the user that this skill does not
   cover it; they should set up a coupled ODE solver.

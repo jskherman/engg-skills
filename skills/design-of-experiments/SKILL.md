@@ -1,8 +1,8 @@
 ---
 name: design-of-experiments
 description: >-
-  Generate full-factorial and two-level factorial DOE plans (with
-  randomization and centre points) and compute main-effect estimates.
+  Generate full-factorial and two-level factorial DOE plans with
+  randomization support and compute main-effect estimates.
   Use when planning a small experimental campaign with 2-5 factors and
   a clear single response. Don't use for response-surface methodology
   (RSM is outside the scope), Plackett-Burman screening (different
@@ -27,8 +27,7 @@ Factorial DOE helpers:
 
 - Full factorial design enumeration for an arbitrary number of factors at
   arbitrary level counts.
-- Two-level factorial design (2^k) with optional centre points and
-  randomization.
+- Two-level factorial design (2^k) with optional randomization.
 - Main-effect estimates from a fitted run (simple averaging contrast).
 
 Suitable for hands-on screening campaigns with a small number of factors;
@@ -55,8 +54,8 @@ optimal-design software.
 
 ## Utility Scripts
 
-- `uv run scripts/doe.py factorial --factors "T:300,320;P:1e5,2e5" --output /tmp/fact.json`
-- `uv run scripts/doe.py two-level --factors "A,B,C" --centre-points 3 --randomise --seed 42 --output /tmp/2k.json`
+- `uv run scripts/doe.py full-factorial --factor "T=300,320" --factor "P=1e5,2e5" --output /tmp/fact.json`
+- `uv run scripts/doe.py two-level --factors "A,B,C" --randomize --seed 42 --output /tmp/2k.json`
 
 ## Procedure
 
@@ -64,8 +63,8 @@ optimal-design software.
    factorial).
 2. Choose the design (full factorial for small k; two-level if you only
    want main effects and 2-factor interactions).
-3. Add centre points to detect curvature.
-4. Randomise the run order to mitigate time-order effects.
+3. Randomise the run order to mitigate time-order effects.
+4. Add replication externally if you need pure-error estimates or curvature checks.
 5. After the run, compute main effects.
 6. If main effects are statistically significant, iterate to RSM with a
    different tool.
@@ -77,9 +76,8 @@ optimal-design software.
 - Reporting effects without replicate variability.
 - Confusing main effect (averaged over the other factors) with
   conditional slope (computed at fixed values of the other factors).
-- Treating curvature significance as a sign that the model is non-linear
-  in the whole region — it just means the centre is above/below the
-  factorial average.
+- Treating a two-level design as a curvature test; this script does not add
+  centre points or run an RSM analysis.
 - Using a 2^k design when you have only one shot per condition (no
   replicates) and treating ±SE as meaningful.
 - Picking response that is correlated with multiple physical phenomena

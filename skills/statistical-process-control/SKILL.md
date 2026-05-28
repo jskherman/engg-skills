@@ -55,7 +55,7 @@ before regulated reporting.
 ## Utility Scripts
 
 - `uv run scripts/spc.py individuals --values "12.3,12.5,12.1,12.4,12.6,12.2" --output /tmp/i.json`
-- `uv run scripts/spc.py xbar-r --subgroups "12.3,12.5,12.1;12.4,12.6,12.2;..." --output /tmp/xr.json`
+- `uv run scripts/spc.py xbar-r --subgroups "12.3,12.5,12.1|12.4,12.6,12.2|12.2,12.4,12.3" --output /tmp/xr.json`
 - `uv run scripts/spc.py capability --values "12.3,..." --usl 13 --lsl 11 --output /tmp/cap.json`
 
 ## Procedure

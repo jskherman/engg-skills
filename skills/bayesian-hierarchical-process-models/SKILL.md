@@ -11,8 +11,9 @@ description: >-
 version: 1.0.0
 license: Apache-2.0
 compatibility: >-
-  Compatible with Agent Skills clients and Hermes Agent; Python 3.11+ and uv
-  are required for bundled Python scripts.
+  Compatible with Agent Skills clients and Hermes Agent; Python 3.11+, uv,
+  and native scientific Python runtime support for PyMC/ArviZ/Pandas are
+  required for bundled scripts.
 metadata:
   hermes:
     tags: [statistics, process-data, data-analysis, bayesian, hierarchical, process, models]

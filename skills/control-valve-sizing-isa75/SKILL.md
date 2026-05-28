@@ -3,11 +3,10 @@ name: control-valve-sizing-isa75
 description: >-
   Size liquid or gas control valves using `fluids.control_valve` (ISA 75.01.01
   / IEC 60534 sizing equations). Returns Kv (m³/hr) and US Cv. Use when
-  selecting a control valve, checking a vendor sizing, or screening for
-  cavitation/flashing risk. Don't use for relief devices (use
-  relief-valve-sizing-api520), choked-flow check valves, or specialized
-  cryogenic / slurry / abrasive service that requires vendor-specific
-  derating.
+  selecting a control valve or checking a vendor sizing. Don't use for relief
+  devices (use relief-valve-sizing-api520), choked-flow check valves, or
+  specialized cryogenic / slurry / abrasive service that requires
+  vendor-specific derating.
 version: 1.0.0
 license: Apache-2.0
 compatibility: >-
@@ -56,8 +55,8 @@ sizing equations.
 2. Get fluid properties at upstream conditions (rho, mu, Psat, gamma, Z).
 3. Run sizing at each flow rate; the operating Cv should fall in the
    20-80% open range at the normal flow.
-4. Check for cavitation (liquid: Psat too close to P2) and choked flow
-   (gas: pressure ratio at or below critical).
+4. Review cavitation/flashing and choked-flow limits separately against the
+   valve trim and vendor data.
 5. Select the valve from vendor data such that the required Cv is met at
    max flow with margin.
 

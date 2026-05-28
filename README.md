@@ -21,7 +21,7 @@ Each skill gives an AI coding agent focused instructions, reusable Python CLI sc
 | `vle-flash-calculations` | Flash, dew/bubble points, K-values via `thermo` (PR / SRK / PRSV / Translated PR). |
 | `equation-of-state-selection` | Decision tree for PR / SRK / PRSV / Translated / IAPWS / activity-coefficient / CPA / SAFT method choice. |
 | `thermo-process-properties` | LPG cubic-EOS, COSTALD mixture density, IAPWS, simulator-inspired method recommendation. |
-| `steam-tables-iapws` | IAPWS-95 / IF97 water and steam properties through `chemicals.iapws`. |
+| `steam-tables-iapws` | IAPWS-95 water/steam state and saturation helpers through `chemicals.iapws`. |
 | `process-units-conversion` | Deterministic unit conversions for common process-engineering quantities. |
 | `dimensionless-numbers` | Reynolds, Prandtl, Schmidt, Peclet, Froude, Weber, Biot, Fourier, etc. |
 
@@ -46,7 +46,7 @@ Each skill gives an AI coding agent focused instructions, reusable Python CLI sc
 | `control-valve-sizing-isa75` | ISA 75.01.01 / IEC 60534 control valve sizing via `fluids`. |
 | `heat-exchanger-sizing` | LMTD-based duty and area estimate with F-factor correction. |
 | `convective-heat-transfer-correlations` | Dittus-Boelter, Gnielinski, Sieder-Tate, Churchill-Chu, Rohsenow. |
-| `material-energy-balances` | Steady-state balance residuals, conversion / selectivity / yield, degree-of-freedom counter. |
+| `material-energy-balances` | Component totals plus reaction conversion / yield screening helpers. |
 
 ### Statistics and Data Analysis
 

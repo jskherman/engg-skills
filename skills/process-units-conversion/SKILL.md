@@ -50,8 +50,9 @@ SI value.
 
 ## Utility Scripts
 
-- `uv run scripts/convert_units.py --quantity pressure --value 100 --from psi --to Pa --output /tmp/p.json`
-- `uv run scripts/convert_units.py --quantity flow --value 2.5 --from gpm --to m3_s --output /tmp/q.json`
+- `uv run scripts/convert_units.py convert --value 100 --from-unit psi --to-unit Pa --output /tmp/p.json`
+- `uv run scripts/convert_units.py convert --value 2.5 --from-unit gpm --to-unit m3_s --output /tmp/q.json`
+- `uv run scripts/convert_units.py list-units --output /tmp/units.json`
 
 ## Procedure
 

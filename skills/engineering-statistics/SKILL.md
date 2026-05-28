@@ -26,11 +26,10 @@ metadata:
 
 Pure-Python statistics for engineering data summaries:
 
-- Mean, median, standard deviation, IQR, min/max.
+- Mean, median, standard deviation, min/max.
 - Mean confidence interval (t-table if degrees of freedom in the
   built-in table, normal approximation otherwise).
-- Simple linear regression (one predictor): slope, intercept, R², and SE
-  of slope and intercept.
+- Simple linear regression (one predictor): slope, intercept, R², and SSE.
 
 The implementation deliberately stays in the Python standard library so
 the skill is fast and dependency-light.
@@ -55,9 +54,9 @@ the skill is fast and dependency-light.
 
 ## Utility Scripts
 
-- `uv run scripts/engg_stats.py descriptive --values "12.3,12.5,12.1,12.4" --output /tmp/desc.json`
-- `uv run scripts/engg_stats.py ci-mean --values "12.3,12.5,12.1,12.4" --confidence 0.95 --output /tmp/ci.json`
-- `uv run scripts/engg_stats.py regression --x "1,2,3,4,5" --y "2.1,3.9,6.1,8.0,10.1" --output /tmp/reg.json`
+- `uv run scripts/engg_stats.py describe --values "12.3,12.5,12.1,12.4" --output /tmp/desc.json`
+- `uv run scripts/engg_stats.py mean-ci --values "12.3,12.5,12.1,12.4" --confidence 0.95 --output /tmp/ci.json`
+- `uv run scripts/engg_stats.py linear-regression --x "1,2,3,4,5" --y "2.1,3.9,6.1,8.0,10.1" --output /tmp/reg.json`
 
 ## Procedure
 
