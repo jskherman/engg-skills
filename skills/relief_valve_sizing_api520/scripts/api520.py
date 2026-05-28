@@ -32,8 +32,8 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--MW", type=float, required=True, help="MW in g/mol")
     g.add_argument("--Z", type=float, default=1.0)
     g.add_argument("--gamma", type=float, default=1.4)
-    g.add_argument("--P1", type=float, required=True, dest="P1_relieving_Pa")
-    g.add_argument("--Pb", type=float, default=101325.0, dest="Pb_Pa")
+    g.add_argument("--P1", type=float, required=True, dest="P1_relieving_Pa", help="Relieving pressure, Pa(a)")
+    g.add_argument("--Pb", type=float, default=101325.0, dest="Pb_Pa", help="Backpressure, Pa(a)")
     g.add_argument("--Kd", type=float, default=0.975)
     g.add_argument("--Kb", type=float, default=1.0)
     g.add_argument("--Kc", type=float, default=1.0)
@@ -42,12 +42,21 @@ def build_parser() -> argparse.ArgumentParser:
     l = sub.add_parser("liquid")
     l.add_argument("--Q", type=float, required=True, dest="Q_m3_s")
     l.add_argument("--rho", type=float, required=True, dest="rho_kg_m3")
-    l.add_argument("--P1", type=float, required=True, dest="P1_relieving_Pa")
-    l.add_argument("--Pb", type=float, default=101325.0, dest="Pb_Pa")
+    l.add_argument("--P1", type=float, required=True, dest="P1_relieving_Pa", help="Relieving pressure, Pa(a)")
+    l.add_argument("--Pb", type=float, default=101325.0, dest="Pb_Pa", help="Backpressure, Pa(a)")
     l.add_argument("--Kd", type=float, default=0.65)
     l.add_argument("--Kw", type=float, default=1.0)
     l.add_argument("--Kc", type=float, default=1.0)
     l.add_argument("--Kv", type=float, default=1.0)
+    l.add_argument("--Kp", type=float, default=1.0)
+    l.add_argument("--mu", type=float, default=None, dest="mu_Pa_s", help="Optional viscosity, Pa*s, for API 520 Kv correction")
+    l.add_argument(
+        "--selected-area",
+        type=float,
+        default=None,
+        dest="selected_orifice_area_m2",
+        help="Optional selected standard orifice area, m^2, for final API 520 Re/Kv check",
+    )
     l.add_argument("--output", required=True)
     return p
 
