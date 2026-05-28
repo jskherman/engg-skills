@@ -33,12 +33,20 @@ def mercaptide_loading(
     an upper bound; actual loading is lower if regeneration is keeping pace.
     """
 
+    if rsh_inlet_lpg_ppmw < 0 or lpg_mass_flow_kg_s < 0:
+        raise ValueError("RSH concentration and LPG mass flow cannot be negative")
+    if caustic_circulation_kg_s <= 0:
+        raise ValueError("caustic circulation must be positive")
+    if not (0 < naoh_wt_fraction <= 1):
+        raise ValueError("naoh_wt_fraction must be in (0, 1]")
+    if avg_rsh_mw_g_mol <= 0:
+        raise ValueError("avg_rsh_mw_g_mol must be positive")
     NAOH_MW = 39.997  # g/mol
     rsh_mass_rate = rsh_inlet_lpg_ppmw * 1e-6 * lpg_mass_flow_kg_s  # kg/s
     rsh_mol_rate = rsh_mass_rate / (avg_rsh_mw_g_mol / 1000.0)
     naoh_mass_rate = caustic_circulation_kg_s * naoh_wt_fraction
     naoh_mol_rate = naoh_mass_rate / (NAOH_MW / 1000.0)
-    loading = rsh_mol_rate / naoh_mol_rate if naoh_mol_rate > 0 else float("inf")
+    loading = rsh_mol_rate / naoh_mol_rate
     return {
         "method": "merox-mercaptide-mass-balance",
         "rsh_inlet_lpg_ppmw": rsh_inlet_lpg_ppmw,
@@ -67,6 +75,12 @@ def extractor_kremser(
 
     if distribution_K_lpg_to_caustic <= 0:
         raise ValueError("distribution coefficient must be positive")
+    if lpg_volumetric_m3_s <= 0 or caustic_volumetric_m3_s <= 0:
+        raise ValueError("volumetric flows must be positive")
+    if n_theoretical_stages <= 0:
+        raise ValueError("n_theoretical_stages must be positive")
+    if rsh_in_lpg < 0:
+        raise ValueError("rsh_in_lpg cannot be negative")
     A = caustic_volumetric_m3_s / (distribution_K_lpg_to_caustic * lpg_volumetric_m3_s)
     if abs(A - 1) < 1e-6:
         eta = n_theoretical_stages / (n_theoretical_stages + 1)
@@ -92,11 +106,13 @@ def disulfide_carryback_risk(
     """Heuristic risk score for disulfide carryback to product LPG.
 
     Returns a 0-1 score combining: caustic disulfide loading, time since last
-    caustic changeout, and disulfide-separator differential pressure (poor
-    separation flagged by elevated dP). This is NOT calibrated to any specific
-    plant; treat as a screening sort and overlay plant data.
+    caustic changeout, and disulfide-separator differential pressure. This is
+    NOT calibrated to any specific plant; treat as a screening sort and overlay
+    plant data.
     """
 
+    if caustic_disulfide_ppmw < 0 or caustic_age_days < 0 or separator_dp_kpa < 0:
+        raise ValueError("risk-score inputs cannot be negative")
     s1 = min(1.0, caustic_disulfide_ppmw / 500.0)
     s2 = min(1.0, caustic_age_days / 90.0)
     s3 = min(1.0, max(0.0, separator_dp_kpa - 5.0) / 20.0)
