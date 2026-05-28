@@ -1,57 +1,54 @@
 ---
 name: censored-regression
 description: >-
-  Fit censored regression models (Tobit / censored lognormal) for lab data
-  reported as below-LOD, below-LOQ, or interval-censored. Use when fitting
-  regressions on sulfur species, trace contaminants, or any analyte that
-  is frequently censored. Don't use for ordinary (uncensored) regression
-  (use engineering-statistics), survival-analysis with right-censoring (use
-  a survival package), or compositional response data (use
-  compositional-data-analysis).
+  Fit censored-normal or censored-lognormal regression models for lab data
+  reported as below-LOD, below-LOQ, above-range, or interval-censored. Use
+  when fitting regressions on sulfur species, trace contaminants, or any
+  analyte that is frequently censored. Don't use for ordinary uncensored
+  regression (use engineering-statistics), time-to-event survival analysis,
+  or compositional response data (use compositional-data-analysis).
 ---
 
-# Censored Regression (Tobit / Censored Lognormal)
+# Censored Regression (Censored Normal / Censored Lognormal)
 
 ## Overview
 
 Many process lab measurements (H2S, COS, mercaptans, DMS, disulfides,
-unknown sulfur, trace metals) are reported as below-LOD, below-LOQ, or
-within an interval. Ordinary least squares on `log(S + epsilon)` is biased
-and understates uncertainty; the correct treatment is a likelihood-based
-censored regression.
+unknown sulfur, trace metals) are reported as below-LOD, below-LOQ, above an
+instrument range, or within an interval. Ordinary least squares on
+`log(S + epsilon)` is biased and understates uncertainty; the correct treatment
+is a likelihood-based censored regression.
 
 This skill provides:
 
-- A Tobit-style censored-normal regression on the log scale (i.e.
-  censored lognormal on the original scale).
+- A censored-normal regression on the log scale by default (censored lognormal
+  on the original response scale).
+- A censored-normal regression on the raw scale with `--no-log`.
 - Left, right, and interval censoring.
-- Robust standard errors via the OPG estimator (statsmodels default).
-- A diagnostic comparing the censored fit to a naive `log(S + epsilon)`
-  fit for sensitivity reporting.
+- Maximum-likelihood fitting through SciPy.
 
-The implementation uses `statsmodels` (Tobit via `Censored` in newer
-statsmodels, or a hand-rolled likelihood as fallback).
+The implementation uses a hand-rolled SciPy likelihood. It does not calculate
+standard errors, robust covariance estimates, or the naive substitution fit.
+Use bootstrap/profile-likelihood checks externally when inference quality matters.
 
 ## Prerequisites
 
 1. `uv` available.
-2. The script declares `statsmodels` and `pandas` in its PEP-723 header;
-   first run will install them (~50 MB combined).
+2. The script declares `numpy`, `scipy`, and `pandas` in its PEP-723 header.
 3. On first use, writes `LICENSE_NOTIFICATION.txt`.
 
 ## Use when
 
 - Lab data has below-LOQ rows that you cannot drop without introducing
   selection bias.
-- Reported values include intervals (e.g. "below 0.5 ppmw" or "between LOD
-  and LOQ").
-- Fitting a regression of `log(species)` on operating variables, where
-  the species is sometimes censored.
+- Reported values include intervals, for example between LOD and LOQ.
+- Fitting a regression of `log(species)` on operating variables, where the
+  species is sometimes censored.
 
 ## Don't use for
 
 - Fully uncensored regression: use `engineering-statistics`.
-- Right-censored survival data: use a survival-analysis package.
+- Time-to-event survival analysis: use a survival-analysis package.
 - Compositional response data (sulfur speciation fractions): combine with
   `compositional-data-analysis`.
 
@@ -61,50 +58,57 @@ statsmodels, or a hand-rolled likelihood as fallback).
 - `uv run scripts/censored.py interval --data data.csv --response S_total --predictors temperature --lower-col LOD --upper-col LOQ --output /tmp/int.json`
 
 Input CSV layout:
+
 - One row per observation.
-- `response` column with the measured value when above LOQ; NaN (or
-  blank) when censored.
-- `lower-col` and/or `upper-col` columns with the censoring bound for
-  censored rows.
+- `response` column with the measured value when fully observed; NaN or blank
+  when censored.
+- `lower-col` and/or `upper-col` columns with the censoring bound for censored
+  rows.
 - Predictor columns referenced by name in `--predictors`.
+
+Censoring-column semantics used by the script:
+
+- finite `response`: exact observation; bounds ignored.
+- missing `response` + only `lower-col` finite: left-censored, meaning
+  `y <= lower_col` (typical below-LOQ row).
+- missing `response` + only `upper-col` finite: right-censored, meaning
+  `y >= upper_col` (above-range row).
+- missing `response` + both bounds finite: interval-censored, meaning
+  `lower_col < y < upper_col`.
 
 ## Workflow
 
-1. Build a tidy CSV with response and predictor columns and the censoring
-   bound columns.
+1. Build a tidy CSV with response and predictor columns and the censoring bound
+   columns.
 2. Decide the censoring direction:
-   - Left censored at LOQ: typical for trace sulfur below quantitation.
-   - Interval censored: when LOD and LOQ are both reported and behave
-     differently.
-3. Run the fit. Inspect:
-   - Coefficients and their standard errors.
-   - Fraction censored (a high fraction (> 30%) makes inference fragile).
-   - Comparison with the naive `log(S + epsilon)` fit; coefficients should
-     change in a defensible direction.
-4. Use posterior or bootstrap CIs for downstream decisions, not the
-   naive `±1.96 SE` if censoring fraction is large.
+   - left-censored at LOQ for trace sulfur below quantitation;
+   - right-censored for above-range measurements;
+   - interval-censored when LOD and LOQ are both reported.
+3. Run the fit. Inspect coefficients, convergence status, optimizer message,
+   and fraction censored.
+4. For downstream decisions, use a bootstrap/profile-likelihood workflow rather
+   than treating the point estimate as final when the censoring fraction is high.
 
 ## Common Mistakes
 
-- Using `log(S + 0.5 * LOQ)` and reporting normal CIs; this substitution
-  is biased and the CIs are wrong.
-- Using a Tobit fit and then reporting the response as if it were not
-  censored; the predictions must be interpreted on the latent (uncensored)
-  scale.
-- Treating "non-detect" as zero. Zero is impossible for most chemical
-  species; the measurement is censored, not zero.
-- Treating LOD and LOQ as the same. They differ by ~3x; use interval
-  censoring if both are reported.
-- Reporting one fit with a single censoring bound when the LOQ has changed
-  during the data window (new instrument, new method).
-- Fitting on raw scale rather than log scale when the data is heavy-tailed.
+- Using `log(S + 0.5 * LOQ)` and reporting normal CIs; this substitution is
+  biased and the CIs are wrong.
+- Using a censored fit and then reporting the response as if it were not
+  censored; predictions are for the latent uncensored response.
+- Treating "non-detect" as zero. Zero is usually a measurement convention, not
+  the physical concentration.
+- Treating LOD and LOQ as the same. Use interval censoring if both are reported
+  and meaningful.
+- Reporting one fit with a single censoring bound when the LOQ changed during
+  the data window.
+- Fitting on the raw scale when the data are heavy-tailed.
 
 ## Fallback Strategies
 
-- If `statsmodels` Tobit is unavailable, use the hand-rolled likelihood
-  fallback (script).
-- For extreme censoring fractions (> 80%), report only the censoring
-  fraction and rank statistics; full regression coefficients are unstable.
+- For extreme censoring fractions (> 80%), report only the censoring fraction
+  and rank/order conclusions; full regression coefficients are unstable.
+- If the row order is a time series, use block bootstrap or a dynamic model for
+  uncertainty rather than i.i.d. inference.
 
 ## References
 
@@ -115,8 +119,7 @@ Input CSV layout:
 ## Anti-Patterns
 
 - Hiding the censoring fraction in the report.
-- Reporting a Tobit coefficient as if it had the same units as an OLS
-  coefficient — same units for the predictor side, but the response is on
-  the latent log scale.
-- Using ordinary bootstrap on censored data without modifying the
-  resampling.
+- Reporting a censored-lognormal coefficient as if it were on the original
+  response scale; by default, the response model is on log scale.
+- Using ordinary bootstrap on autocorrelated censored data without preserving
+  time dependence.
