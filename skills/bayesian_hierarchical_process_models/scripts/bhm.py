@@ -30,8 +30,50 @@ SKILL = "bayesian_hierarchical_process_models"
 SKILL_DIR = Path(__file__).resolve().parents[1]
 
 
+def _as_optional_float_array(df: pd.DataFrame, column: str | None) -> np.ndarray | None:
+    return df[column].astype(float).values if column else None
+
+
+def _validate_censoring_rows(
+    *,
+    y_raw: np.ndarray,
+    left_limit: np.ndarray | None,
+    right_limit: np.ndarray | None,
+) -> dict[str, int]:
+    """Classify censoring rows and reject missing responses without bounds.
+
+    Naming follows the existing skill spec for compatibility:
+
+    - `lower_col` is the left-censoring limit for rows known only as y <= limit.
+    - `upper_col` is the right-censoring limit for rows known only as y >= limit.
+    - both columns present on a missing-response row define interval censoring.
+    """
+
+    observed = ~np.isnan(y_raw)
+    has_left = left_limit is not None and ~np.isnan(left_limit)
+    has_right = right_limit is not None and ~np.isnan(right_limit)
+    if left_limit is None:
+        has_left = np.zeros(len(y_raw), dtype=bool)
+    if right_limit is None:
+        has_right = np.zeros(len(y_raw), dtype=bool)
+    missing_without_bounds = (~observed) & (~has_left) & (~has_right)
+    if missing_without_bounds.any():
+        raise ValueError("missing response rows must have a censoring bound")
+    if left_limit is not None and right_limit is not None:
+        bad_interval = (~observed) & has_left & has_right & (left_limit >= right_limit)
+        if bad_interval.any():
+            raise ValueError("interval-censored rows require lower_col < upper_col")
+    return {
+        "n_observed": int(observed.sum()),
+        "n_left_censored": int(((~observed) & has_left & (~has_right)).sum()),
+        "n_right_censored": int(((~observed) & (~has_left) & has_right).sum()),
+        "n_interval_censored": int(((~observed) & has_left & has_right).sum()),
+    }
+
+
 def build_model(df: pd.DataFrame, spec: dict):
     import pymc as pm
+    import pytensor.tensor as pt
 
     response = spec["response"]
     predictors = spec["predictors"]
@@ -41,19 +83,31 @@ def build_model(df: pd.DataFrame, spec: dict):
     priors = spec.get("priors", {})
 
     y_raw = df[response].astype(float).values
-    X = np.column_stack([df[col].astype(float).values for col in predictors])
-    X = (X - X.mean(axis=0)) / np.maximum(X.std(axis=0), 1e-9)
+    if predictors:
+        X = np.column_stack([df[col].astype(float).values for col in predictors])
+        X = (X - X.mean(axis=0)) / np.maximum(X.std(axis=0), 1e-9)
+    else:
+        X = np.zeros((len(df), 0))
 
     group_idx = None
-    n_groups = 0
+    uniques = []
     if group:
         codes, uniques = pd.factorize(df[group].astype("category"))
         group_idx = codes
-        n_groups = len(uniques)
 
-    lower = df[censoring["lower_col"]].astype(float).values if censoring.get("lower_col") else None
-    upper = df[censoring["upper_col"]].astype(float).values if censoring.get("upper_col") else None
+    left_limit = _as_optional_float_array(df, censoring.get("lower_col"))
+    right_limit = _as_optional_float_array(df, censoring.get("upper_col"))
+    censoring_counts = _validate_censoring_rows(y_raw=y_raw, left_limit=left_limit, right_limit=right_limit)
     observed_mask = ~np.isnan(y_raw)
+    has_left = left_limit is not None and ~np.isnan(left_limit)
+    has_right = right_limit is not None and ~np.isnan(right_limit)
+    if left_limit is None:
+        has_left = np.zeros(len(df), dtype=bool)
+    if right_limit is None:
+        has_right = np.zeros(len(df), dtype=bool)
+    left_mask = (~observed_mask) & has_left & (~has_right)
+    right_mask = (~observed_mask) & (~has_left) & has_right
+    interval_mask = (~observed_mask) & has_left & has_right
 
     coords = {"obs": np.arange(len(df)), "pred": predictors}
     if group:
@@ -61,15 +115,19 @@ def build_model(df: pd.DataFrame, spec: dict):
     with pm.Model(coords=coords) as model:
         beta_prior = priors.get("beta", {"dist": "normal", "mu": 0.0, "sigma": 5.0})
         sigma_prior = priors.get("sigma", {"dist": "half_normal", "sigma": 1.0})
-        beta = pm.Normal("beta", mu=beta_prior.get("mu", 0.0), sigma=beta_prior.get("sigma", 5.0), dims="pred")
+        if predictors:
+            beta = pm.Normal("beta", mu=beta_prior.get("mu", 0.0), sigma=beta_prior.get("sigma", 5.0), dims="pred")
+            linear = pm.math.dot(X, beta)
+        else:
+            linear = 0.0
         if group:
             tau_prior = priors.get("tau_group", {"dist": "half_normal", "sigma": 0.5})
             mu_alpha = pm.Normal("mu_alpha", mu=0.0, sigma=5.0)
             tau_group = pm.HalfNormal("tau_group", sigma=tau_prior.get("sigma", 0.5))
             alpha = pm.Normal("alpha", mu=mu_alpha, sigma=tau_group, dims="group")
-            mu = alpha[group_idx] + pm.math.dot(X, beta)
+            mu = alpha[group_idx] + linear
         else:
-            mu = pm.Normal("alpha", mu=0.0, sigma=5.0) + pm.math.dot(X, beta)
+            mu = pm.Normal("alpha", mu=0.0, sigma=5.0) + linear
         sigma = pm.HalfNormal("sigma", sigma=sigma_prior.get("sigma", 1.0))
         if ar1:
             phi = pm.Uniform("phi", lower=-0.99, upper=0.99)
@@ -77,20 +135,28 @@ def build_model(df: pd.DataFrame, spec: dict):
             y_lat = pm.Deterministic("y_lat", mu + eps, dims="obs")
         else:
             y_lat = pm.Deterministic("y_lat", mu, dims="obs")
-        # Observed (uncensored) data
+
         if observed_mask.any():
             pm.Normal("y_obs", mu=y_lat[observed_mask], sigma=sigma, observed=y_raw[observed_mask])
-        # Censored data
-        if lower is not None:
-            left_mask = (~observed_mask) & (~np.isnan(lower))
-            if left_mask.any():
-                pm.Censored(
-                    "y_left",
-                    pm.Normal.dist(mu=y_lat[left_mask], sigma=sigma),
-                    lower=-np.inf,
-                    upper=lower[left_mask],
-                    observed=lower[left_mask],
-                )
+
+        standard_normal = pm.Normal.dist(mu=0.0, sigma=1.0)
+        if left_mask.any():
+            z_left = (left_limit[left_mask] - y_lat[left_mask]) / sigma
+            pm.Potential("y_left_censored", pm.logcdf(standard_normal, z_left).sum())
+        if right_mask.any():
+            z_right = -(right_limit[right_mask] - y_lat[right_mask]) / sigma
+            pm.Potential("y_right_censored", pm.logcdf(standard_normal, z_right).sum())
+        if interval_mask.any():
+            z_hi = (right_limit[interval_mask] - y_lat[interval_mask]) / sigma
+            z_lo = (left_limit[interval_mask] - y_lat[interval_mask]) / sigma
+            log_hi = pm.logcdf(standard_normal, z_hi)
+            log_lo = pm.logcdf(standard_normal, z_lo)
+            interval_prob = pt.maximum(pt.exp(log_hi) - pt.exp(log_lo), 1e-300)
+            pm.Potential("y_interval_censored", pt.log(interval_prob).sum())
+        pm.Deterministic("n_observed", pt.as_tensor_variable(censoring_counts["n_observed"]))
+        pm.Deterministic("n_left_censored", pt.as_tensor_variable(censoring_counts["n_left_censored"]))
+        pm.Deterministic("n_right_censored", pt.as_tensor_variable(censoring_counts["n_right_censored"]))
+        pm.Deterministic("n_interval_censored", pt.as_tensor_variable(censoring_counts["n_interval_censored"]))
     return model
 
 
@@ -139,7 +205,7 @@ def main() -> int:
             az.to_netcdf(idata, args.idata_out)
             diagnostics["idata_path"] = args.idata_out
         res = {
-            "method": "PyMC NUTS hierarchical regression",
+            "method": "PyMC NUTS hierarchical regression with observed/censored likelihood",
             "summary": summary_dict,
             "diagnostics": diagnostics,
             "spec": spec,
