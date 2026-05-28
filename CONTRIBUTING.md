@@ -10,15 +10,15 @@ Use `uv` for the normal workflow:
 uv run pytest
 ```
 
-The shared package is located at `skills/engg_skills_common/engg_skills_common`. Skill scripts import it directly from the repository layout so they can run without publishing a package.
+The shared package is located at `skills/engg-skills-common/engg_skills_common`. Skill scripts import it directly from the repository layout so they can run without publishing a package.
 
 ## Skill Requirements
 
 Each skill must include:
 
-- `skills/<skill_folder>/SKILL.md`
-- YAML frontmatter with `name` and `description`
-- A clear overview, dependencies, quick start, workflow, common mistakes, and safety/source notices
+- `skills/<skill-name>/SKILL.md`, where the folder name matches frontmatter `name`
+- YAML frontmatter with Agent Skills-compatible `name` and `description`, plus Hermes metadata
+- A clear overview, dependencies, `When to Use`, `Procedure`, `Pitfalls`, `Verification`, and safety/source notices
 - `scripts/` when deterministic computation, API interaction, file parsing, or repeatable data transformation is useful
 - `references/` when equations, examples, assumptions, or source terms need more space
 

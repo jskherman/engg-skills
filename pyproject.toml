@@ -54,7 +54,7 @@ all = [
 dev = ["pytest>=8.0"]
 
 [tool.setuptools.packages.find]
-where = ["skills/engg_skills_common"]
+where = ["skills/engg-skills-common"]
 include = ["engg_skills_common*"]
 
 [tool.pytest.ini_options]

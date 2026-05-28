@@ -6,6 +6,15 @@ description: >-
   used by every other skill in this repository. Use as a prerequisite check
   before invoking any other engineering skill. Don't use as a substitute
   for actually running a skill — it does no engineering work itself.
+version: 1.0.0
+license: Apache-2.0
+compatibility: >-
+  Compatible with Agent Skills clients and Hermes Agent; Python 3.11+ and uv
+  are required for bundled Python scripts.
+metadata:
+  hermes:
+    tags: [skills, tooling, uv]
+    category: infrastructure
 ---
 
 # uv (Python runner)
@@ -16,7 +25,7 @@ Every other skill in this repository runs its scripts via `uv run`
 (PEP-723 inline dependency declaration). This skill is a one-page check:
 "is `uv` on PATH, and if not, how do you install it?"
 
-## Use when
+## When to Use
 
 - Setting up the environment for the first time.
 - A skill invocation has failed with `uv: command not found`.
@@ -56,13 +65,24 @@ uv --version
 - Stdout is reserved for a single success message; results live in the
   JSON file at `--output`.
 
-## Common Mistakes
+## Pitfalls
 
 - Trying to `python` a script directly rather than `uv run`; the script
   header won't be respected.
 - Running scripts from a different working directory than the skill folder
-  — works, but path-based imports of `engg_skills_common` use the script's
-  own directory, which is robust.
+  — works, but path-based imports resolve `engg_skills_common` from the sibling
+  `skills/engg-skills-common` folder, which is robust.
+
+## Procedure
+
+1. Read this SKILL.md and any referenced files needed for the task.
+2. Use scripts from `scripts/` when a deterministic calculation or check is available.
+3. Preserve stated assumptions, warnings, and scope limits in the final answer.
+
+## Verification
+
+- Run `uv --version` and confirm it prints a version.
+- Run a representative skill script with `uv run ... --output <file>` and confirm the JSON output file is created.
 
 ## References
 
