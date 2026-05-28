@@ -13,6 +13,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from scipy.optimize import minimize
 
 COMMON_ROOT = Path(__file__).resolve().parents[2] / "engg_skills_common"
 sys.path.insert(0, str(COMMON_ROOT))
@@ -29,21 +30,79 @@ SKILL_DIR = Path(__file__).resolve().parents[1]
 
 
 def _build_lag_matrix(x: np.ndarray, max_lag: int) -> np.ndarray:
+    if max_lag < 0:
+        raise ValueError("max_lag must be non-negative")
     n = len(x)
     L = max_lag + 1
-    X = np.zeros((n, L))
+    if L > n:
+        raise ValueError("max_lag must be less than the number of rows")
+    X = np.full((n, L), np.nan)
     for k in range(L):
         X[k:, k] = x[: n - k]
     return X
 
 
 def _second_difference_penalty(L: int) -> np.ndarray:
+    if L < 3:
+        return np.zeros((L, L))
     D = np.zeros((L - 2, L))
     for i in range(L - 2):
         D[i, i] = 1.0
         D[i, i + 1] = -2.0
         D[i, i + 2] = 1.0
     return D.T @ D
+
+
+def _fit_unrestricted(X: np.ndarray, y: np.ndarray, penalty: float) -> tuple[float, np.ndarray]:
+    L = X.shape[1]
+    Xd = np.column_stack([np.ones(len(X)), X])
+    P = np.zeros((L + 1, L + 1))
+    P[1:, 1:] = _second_difference_penalty(L) * penalty
+    A = Xd.T @ Xd + P
+    b = Xd.T @ y
+    try:
+        params = np.linalg.solve(A, b)
+    except np.linalg.LinAlgError:
+        params = np.linalg.lstsq(A, b, rcond=None)[0]
+    return float(params[0]), params[1:]
+
+
+def _fit_nonnegative(X: np.ndarray, y: np.ndarray, penalty: float) -> tuple[float, np.ndarray]:
+    intercept0, coeff0 = _fit_unrestricted(X, y, penalty)
+    L = X.shape[1]
+    P = _second_difference_penalty(L) * penalty
+    start = np.r_[intercept0, np.maximum(coeff0, 0.0)]
+
+    def objective(params: np.ndarray) -> float:
+        intercept = params[0]
+        coeff = params[1:]
+        resid = y - (intercept + X @ coeff)
+        return float(resid @ resid + coeff @ P @ coeff)
+
+    res = minimize(
+        objective,
+        start,
+        method="L-BFGS-B",
+        bounds=[(None, None)] + [(0.0, None)] * L,
+    )
+    if not res.success:
+        raise RuntimeError(f"nonnegative FIR optimization failed: {res.message}")
+    return float(res.x[0]), res.x[1:]
+
+
+def _kernel_summary(coeff: np.ndarray) -> tuple[list[float] | None, float | None, int | None, list[str]]:
+    warnings: list[str] = []
+    total = float(coeff.sum())
+    if abs(total) < 1e-12:
+        return None, None, None, ["Cumulative lag effect is approximately zero; normalized lag weights are undefined."]
+    if np.any(coeff > 0) and np.any(coeff < 0):
+        warnings.append("Lag coefficients have mixed signs; normalized residence-time-style weights are not reported.")
+        return None, None, None, warnings
+    weights = coeff / total
+    cumulative = np.cumsum(weights)
+    t50 = int(np.argmax(cumulative >= 0.5)) if np.any(cumulative >= 0.5) else None
+    centroid = float(np.sum(np.arange(len(coeff)) * weights))
+    return weights.tolist(), centroid, t50, warnings
 
 
 def fit_fir(
@@ -53,50 +112,58 @@ def fit_fir(
     max_lag: int,
     *,
     penalty: float = 1.0,
+    nonnegative: bool = False,
     reverse_for_placebo: bool = False,
 ) -> dict:
+    if penalty < 0:
+        raise ValueError("penalty must be non-negative")
     x = df[predictor].astype(float).values
     y = df[response].astype(float).values
     if reverse_for_placebo:
         x = x[::-1]
-    obs_mask = ~np.isnan(y)
     X_full = _build_lag_matrix(x, max_lag)
+    obs_mask = (~np.isnan(y)) & np.all(np.isfinite(X_full), axis=1)
     X = X_full[obs_mask]
     y_obs = y[obs_mask]
-    # Centre y to drop intercept; user can add fixed effects via predictor.
-    y_mean = y_obs.mean()
-    y_c = y_obs - y_mean
     L = max_lag + 1
-    R = _second_difference_penalty(L) * penalty
-    # Constrain weights to sum to 1 with a quadratic penalty (soft).
-    sum1_pen = 1e3 * np.outer(np.ones(L), np.ones(L))
-    A = X.T @ X + R + sum1_pen
-    b = X.T @ y_c + 1e3 * np.ones(L)
-    w = np.linalg.solve(A, b)
-    # Non-negativity by projection (simple PGD step)
-    for _ in range(50):
-        w = np.maximum(w, 0.0)
-        grad = A @ w - b
-        w = w - 0.01 * grad
-        w = np.maximum(w, 0.0)
-        w = w / max(w.sum(), 1e-9)
-    fitted = X @ w + y_mean
-    rss = float(np.sum((y_obs - fitted) ** 2))
-    centroid_lag = float(np.sum(np.arange(L) * w))
-    cumulative = np.cumsum(w)
-    t50 = int(np.argmax(cumulative >= 0.5)) if (cumulative >= 0.5).any() else max_lag
+    if len(y_obs) <= L + 1:
+        raise ValueError("not enough observed response rows for the requested lag horizon")
+
+    if nonnegative:
+        intercept, coeff = _fit_nonnegative(X, y_obs, penalty)
+        method = "FIR-penalised-nonnegative"
+    else:
+        intercept, coeff = _fit_unrestricted(X, y_obs, penalty)
+        method = "FIR-penalised-unrestricted"
+
+    fitted = intercept + X @ coeff
+    resid = y_obs - fitted
+    rss = float(np.sum(resid ** 2))
+    tss = float(np.sum((y_obs - y_obs.mean()) ** 2))
+    r2 = 1.0 - rss / tss if tss > 0 else None
+    normalized_weights, centroid_lag, t50, warnings = _kernel_summary(coeff)
+    if len(y_obs) < 5 * L:
+        warnings.append("Observed response count is less than five times the number of lag coefficients; use stronger prior/penalty or a shorter lag horizon.")
+
     return {
-        "method": "FIR-penalised-NN-projection",
+        "method": method,
         "max_lag": max_lag,
-        "weights": w.tolist(),
-        "sum_weights": float(w.sum()),
-        "peak_lag": int(np.argmax(w)),
+        "intercept": intercept,
+        "lag_coefficients": coeff.tolist(),
+        "cumulative_effect_per_predictor_unit": float(coeff.sum()),
+        "normalized_lag_weights": normalized_weights,
+        "weights": normalized_weights,
+        "peak_effect_lag": int(np.argmax(np.abs(coeff))),
+        "peak_positive_lag": int(np.argmax(coeff)),
         "centroid_lag": centroid_lag,
         "time_to_50pct_response": t50,
         "rss": rss,
+        "r_squared": r2,
         "n_observations": int(obs_mask.sum()),
         "penalty": penalty,
+        "nonnegative": nonnegative,
         "is_placebo": reverse_for_placebo,
+        "warnings": warnings,
     }
 
 
@@ -110,6 +177,7 @@ def main() -> int:
         s.add_argument("--predictor", required=True)
         s.add_argument("--max-lag", type=int, required=True, dest="max_lag")
         s.add_argument("--penalty", type=float, default=1.0)
+        s.add_argument("--nonnegative", action="store_true", help="Constrain lag coefficients to be non-negative")
         s.add_argument("--output", required=True)
     args = parser.parse_args()
     write_license_notification(
@@ -126,6 +194,7 @@ def main() -> int:
             predictor=args.predictor,
             max_lag=args.max_lag,
             penalty=args.penalty,
+            nonnegative=args.nonnegative,
             reverse_for_placebo=(args.command == "placebo"),
         )
         data = result_envelope(
