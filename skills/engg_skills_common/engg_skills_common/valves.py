@@ -71,6 +71,15 @@ def gas_control_valve(
     }
 
 
+# Relief gas/vapor equation notes, API 520 Part I, 8th ed. SI basis:
+# W kg/h, P kPa(a), T K, M kg/kmol, A mm^2, k = Cp/Cv.
+# Critical ratio: Pcf/P1 = (2/(k + 1))^(k/(k - 1)).
+# Critical area: A = W*sqrt(T*Z/M)/(C*Kd*P1*Kb*Kc).
+# Gas C: C = 0.03948*sqrt(k*(2/(k + 1))^((k + 1)/(k - 1))).
+# Subcritical area: A = 17.9*W*sqrt(T*Z/(M*P1*(P1 - P2)))/(F2*Kd*Kc).
+# Subcritical F2, r = P2/P1: sqrt(k/(k - 1)*r^(2/k)*(1 - r^((k - 1)/k))/(1 - r)).
+
+
 def api520_gas_critical_pressure_ratio(gamma: float) -> float:
     """Critical downstream/upstream absolute pressure ratio for ideal-gas PRV flow."""
 
@@ -114,11 +123,10 @@ def api520_gas_relief_area(
     """API 520 Part I preliminary gas/vapor relief orifice area.
 
     Inputs are SI: kg/s, K, g/mol, and absolute Pa. Internally the function
-    converts to the API 520 SI equation basis of kg/h, kPa, K, kg/kg-mol, and
-    mm^2. Critical flow uses the API critical-flow equation. Subcritical flow
-    uses the API subcritical equation for conventional and pilot-operated PRVs;
-    for balanced-bellows subcritical service, obtain `Kb` from the manufacturer
-    or the standard's backpressure correction figures and verify the sizing path.
+    converts to kg/h, kPa, K, kg/kmol, and mm^2. Critical flow uses the
+    critical-flow area equation. Subcritical flow uses the subcritical equation
+    for conventional and pilot-operated PRVs; for balanced-bellows subcritical
+    service, obtain correction factors from the manufacturer or standard.
     """
 
     if mass_flow_kg_s <= 0 or T_K <= 0 or MW <= 0 or Z <= 0:
@@ -140,7 +148,7 @@ def api520_gas_relief_area(
         regime = "critical"
         C = api520_gas_coefficient_C(gamma)
         A_mm2 = W_kg_h / (C * Kd * P1_kPa * Kb * Kc) * math.sqrt(T_K * Z / MW)
-        equation = "API 520 Part I 8th ed. Eq. (5), with C from Eq. (9)"
+        equation = "API 520 Part I 8th ed. gas/vapor critical-flow equation; C equation"
         F2 = None
     else:
         regime = "subcritical"
@@ -151,7 +159,7 @@ def api520_gas_relief_area(
             / (F2 * Kd * Kc)
             * math.sqrt(T_K * Z / (MW * P1_kPa * (P1_kPa - P2_kPa)))
         )
-        equation = "API 520 Part I 8th ed. Eq. (15), with F2 from Eq. (18)"
+        equation = "API 520 Part I 8th ed. gas/vapor subcritical-flow equation; F2 equation"
         C = None
         if abs(Kb - 1.0) > 1e-12:
             warnings.append("Kb is not used in the API 520 subcritical gas/vapor equation used here.")
@@ -181,6 +189,14 @@ def api520_gas_relief_area(
     }
 
 
+# Relief liquid equation notes, API 520 Part I, 8th ed. SI basis:
+# Q L/min, P kPa(a), G1 liquid SG vs water at flowing temperature, A mm^2, mu cP.
+# Liquid area: A = 11.78*Q*sqrt(G1/(P1 - P2))/(Kd*Kw*Kc*Kv).
+# Viscosity correction: Kv = (0.9935 + 2.878/sqrt(Re) + 342.75/Re^1.5)^-1.
+# Re estimate for Kv correction: Re = 18800*Q*G1/(mu*sqrt(A)).
+# Use Kv = 1 first, select the next larger standard orifice, then recheck Kv.
+
+
 def api520_liquid_viscosity_correction(Re: float) -> float:
     """API 520 liquid-service viscosity correction factor Kv."""
 
@@ -199,23 +215,21 @@ def api520_liquid_relief_area(
     Kw: float = 1.0,
     Kc: float = 1.0,
     Kv: float = 1.0,
-    Kp: float = 1.0,
     mu_Pa_s: float | None = None,
     selected_orifice_area_m2: float | None = None,
 ) -> dict[str, Any]:
     """API 520 Part I preliminary liquid relief orifice area.
 
-    Inputs are SI: m^3/s, kg/m^3, and Pa. The calculation uses API 520 SI
-    liquid equation units internally: Q in L/min, pressure drop in kPa, and
-    area in mm^2. If `mu_Pa_s` is supplied, `Kv` is calculated from the API
-    Reynolds-number correlation; otherwise the explicit `Kv` input is used.
+    Inputs are SI: m^3/s, kg/m^3, and Pa. The calculation converts to L/min,
+    kPa, and mm^2 internally. If `mu_Pa_s` is supplied, `Kv` is calculated
+    from the Reynolds-number correction; otherwise the explicit `Kv` input is used.
     """
 
     if Q_m3_s <= 0 or rho_kg_m3 <= 0:
         raise ValueError("Q and rho must be positive")
     if P1_relieving_Pa <= Pb_Pa:
         raise ValueError("inlet relieving pressure must exceed back-pressure")
-    for name, value in {"Kd": Kd, "Kw": Kw, "Kc": Kc, "Kv": Kv, "Kp": Kp}.items():
+    for name, value in {"Kd": Kd, "Kw": Kw, "Kc": Kc, "Kv": Kv}.items():
         if value <= 0:
             raise ValueError(f"{name} must be positive")
     if mu_Pa_s is not None and mu_Pa_s <= 0:
@@ -226,7 +240,7 @@ def api520_liquid_relief_area(
     Q_L_min = Q_m3_s * 60_000.0
     dP_kPa = (P1_relieving_Pa - Pb_Pa) / 1000.0
     G1 = rho_kg_m3 / 999.016  # water density near standard conditions, kg/m^3
-    A_no_visc_mm2 = 11.78 * Q_L_min / (Kd * Kw * Kc * Kp) * math.sqrt(G1 / dP_kPa)
+    A_no_visc_mm2 = 11.78 * Q_L_min / (Kd * Kw * Kc) * math.sqrt(G1 / dP_kPa)
     Re = None
     Kv_used = Kv
     warnings: list[str] = []
@@ -238,12 +252,12 @@ def api520_liquid_relief_area(
         if abs(Kv - 1.0) > 1e-12:
             warnings.append("Explicit Kv input ignored because mu_Pa_s was provided and Kv was calculated.")
         if selected_orifice_area_m2 is None:
-            warnings.append("Kv was estimated using the preliminary calculated area; API 520 sizes the next larger standard orifice before final Re/Kv evaluation.")
+            warnings.append("Kv was estimated using the preliminary calculated area; select a standard orifice before final Re/Kv evaluation.")
 
     A_mm2 = A_no_visc_mm2 / Kv_used
     return {
         "method": "API-520-Part-I-8th-ed-liquid",
-        "api_equation_basis": "API 520 Part I 8th ed. Eq. (29); Eq. (30)/(33) if viscosity correction is calculated",
+        "api_equation_basis": "API 520 Part I 8th ed. liquid equation; viscosity correction if calculated",
         "required_orifice_area_m2": A_mm2 / 1e6,
         "required_orifice_area_mm2": A_mm2,
         "area_without_viscosity_correction_mm2": A_no_visc_mm2,
@@ -257,7 +271,6 @@ def api520_liquid_relief_area(
         "Kd": Kd,
         "Kw": Kw,
         "Kc": Kc,
-        "Kp": Kp,
         "Kv": Kv_used,
         "Re": Re,
         "warnings": warnings,
