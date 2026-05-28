@@ -3,9 +3,8 @@
 Includes pure-Python implementations of:
 - Sample autocorrelation (ACF) and partial autocorrelation (PACF) via
   Durbin-Levinson recursion.
-- Block-bootstrap resampling for autocorrelated series.
-- Estimation of an appropriate block length (Politis-White 2004) as a
-  screening helper, with a sensible default if the spectral estimate fails.
+- Moving-block bootstrap resampling for autocorrelated series.
+- A simple ACF-threshold block-length heuristic for screening work.
 """
 
 from __future__ import annotations
@@ -57,12 +56,16 @@ def partial_autocorrelation(x: Sequence[float], max_lag: int) -> list[float]:
 def estimate_block_length(x: Sequence[float], c: float = 2.0) -> dict[str, Any]:
     """Heuristic block length: first lag k where |rho_k| < 2/sqrt(n).
 
-    Returns the first lag at which the empirical ACF drops below the white-noise
-    confidence band, multiplied by `c` for safety. Result is clipped to [2, n/4].
+    Returns the first lag at which the empirical ACF drops below the approximate
+    white-noise confidence band, multiplied by `c` for conservatism. Result is
+    clipped to [2, n/4]. This is not the Politis-White optimal block-length
+    estimator; treat it as a screening default.
     """
 
     n = len(x)
     max_lag = min(40, n // 2 - 1)
+    if max_lag < 1:
+        raise ValueError("series is too short to estimate block length")
     acf = autocorrelation(x, max_lag)
     threshold = 2.0 / math.sqrt(n)
     first_below = None
@@ -72,7 +75,13 @@ def estimate_block_length(x: Sequence[float], c: float = 2.0) -> dict[str, Any]:
             break
     base = first_below if first_below is not None else max_lag
     L = max(2, min(int(c * base), n // 4))
-    return {"method": "ACF-threshold", "max_lag": max_lag, "first_below": first_below, "block_length": L}
+    return {
+        "method": "ACF-threshold-heuristic",
+        "max_lag": max_lag,
+        "first_below": first_below,
+        "block_length": L,
+        "note": "Screening heuristic, not Politis-White optimal block length.",
+    }
 
 
 def moving_block_bootstrap(
@@ -83,7 +92,7 @@ def moving_block_bootstrap(
     statistic: Callable[[list[float]], float],
     seed: int | None = None,
 ) -> dict[str, Any]:
-    """Moving block bootstrap (Kuensch 1989) for autocorrelated series.
+    """Moving block bootstrap (Künsch 1989) for autocorrelated series.
 
     Resamples blocks of length `block_length` with replacement to form pseudo
     series of the same length as the input, computes `statistic` for each, and
@@ -93,6 +102,8 @@ def moving_block_bootstrap(
     n = len(x)
     if block_length < 1 or block_length > n:
         raise ValueError("invalid block_length")
+    if n_resamples < 1:
+        raise ValueError("n_resamples must be positive")
     rng = random.Random(seed)
     n_blocks = math.ceil(n / block_length)
     samples: list[float] = []
