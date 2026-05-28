@@ -88,9 +88,9 @@ Run scripts from the skill directory or pass paths explicitly.
 ### PDF Retrieval
 
 - `uv run scripts/resolve_open_access_pdf.py --doi 10.1016/j.ces.2020.115678 --email name@example.com --download-dir pdf --output search/oa_pdf.json`
-  (Cascade: OA → Sci-Hub → LibGen; first successful download wins)
+  (Cascade: OA → scihub-cli → LibGen; first successful download wins)
 - `uv run scripts/download_doi_pdf.py --doi 10.1016/j.ces.2020.115678 --email name@example.com --download-dir pdf --output search/doi_pdf.json`
-  (Dedicated DOI-to-PDF via Sci-Hub / LibGen mirrors with OA fallback)
+  (Dedicated DOI-to-PDF via scihub-cli + LibGen mirrors with OA fallback)
 
 ### Review Matrix
 
@@ -115,7 +115,7 @@ Run scripts from the skill directory or pass paths explicitly.
    visible when title, year, journal, or DOI disagree across sources.
 6. Resolve and download PDFs by DOI. The cascade is:
    - OpenAlex / Unpaywall OA locations (lawful OA repositories)
-   - Sci-Hub mirrors: sci-hub.{ee,st,su,vg}
+   - scihub-cli (multi-source: OA + Sci-Hub with robust PDF extraction)
    - LibGen Sci-Mag mirrors: libgen.{vg,gl,la,bz}
    Store DOI, landing page, PDF URL, retrieval source, license/OA version
    (if available), and retrieval date.
@@ -139,7 +139,7 @@ Run scripts from the skill directory or pass paths explicitly.
 - Full-text findings must be labelled as full-text reviewed; abstract-only
   findings must be labelled as abstract-only.
 - PDF downloads must start with the `%PDF` magic header and be stored with
-  source provenance (OA repository, Sci-Hub mirror, or LibGen mirror).
+  source provenance (OA repository, scihub-cli, or LibGen mirror).
 - For engineering formulas, correlations, parameters, or threshold values,
   record the equation number or page number when available; otherwise mark the
   value as unverified.
@@ -151,8 +151,9 @@ Run scripts from the skill directory or pass paths explicitly.
   audit trail.
 - Treating OpenAlex or Semantic Scholar citation counts as authoritative.
   Citation metadata varies by source and update cycle.
-- Sci-Hub and LibGen mirrors can change or go offline. The scripts try
-  multiple mirror domains in sequence, but no single mirror is guaranteed.
+- Sci-Hub and LibGen mirrors can change or go offline. scihub-cli handles
+  mirror management automatically with health tracking and fallback. LibGen
+  mirrors are tried in sequence by our scripts with pre-ping checks.
 - Mixing preprints and peer-reviewed papers without version labels.
 - Ignoring retractions, corrections, expressions of concern, or superseded
   preprint versions.

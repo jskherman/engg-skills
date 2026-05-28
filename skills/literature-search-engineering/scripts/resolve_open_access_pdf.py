@@ -7,7 +7,7 @@
 
 Tries in order:
   1. OpenAlex / Unpaywall open-access locations (best_oa_location, primary_location)
-  2. Sci-Hub mirrors (sci-hub.ee, .st, .su, .vg)
+  2. Sci-Hub via scihub-cli (multi-source: OA + Sci-Hub with robust PDF extraction)
   3. LibGen Sci-Mag mirrors (libgen.vg, .gl, .la, .bz)
 
 Each candidate is checked (HTTPS, PDF magic %PDF) before downloading.
@@ -19,7 +19,10 @@ import argparse
 import hashlib
 import json
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -36,9 +39,8 @@ SKILL = "literature-search-engineering"
 SKILL_DIR = Path(__file__).resolve().parents[1]
 
 # ── DOI-based mirror domains ──────────────────────────────────────────────
-# These mirrors provide access to papers via their DOI URL and are tried
-# as fallback sources after lawful OA repositories.
-SCI_HUB_MIRRORS = ("ee", "st", "su", "vg")
+# LibGen mirrors provide access to papers via their DOI URL and are tried
+# as fallback sources. Sci-Hub is handled by scihub-cli (external subprocess).
 LIBGEN_MIRRORS = ("vg", "gl", "la", "bz")
 
 
@@ -171,65 +173,78 @@ def _download_pdf(url: str, output_path: Path, email: str | None) -> dict:
     }
 
 
-# ── Sci-Hub mirror candidates ────────────────────────────────────────────
+# ── Sci-Hub (via scihub-cli) ────────────────────────────────────────────
 
-def _scihub_candidate(doi: str, email: str | None) -> dict | None:
-    """Try Sci-Hub mirrors and return the first matching PDF URL candidate."""
-    for mirror in ("ee", "st", "su", "vg"):
-        # Pre-ping the mirror to skip dead ones quickly
-        if not _ping_url(f"https://sci-hub.{mirror}/", timeout=4):
-            continue
-        url = f"https://sci-hub.{mirror}/{quote(doi)}"
-        try:
-            headers = {"User-Agent": f"engg-skills/0.1 ({email or 'mailto optional'})"}
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                html = resp.read().decode("utf-8", errors="replace")
-        except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError):
-            continue
+def _scihub_cli_download(doi: str, output_path: Path, email: str | None) -> dict | None:
+    """Download a paper PDF using scihub-cli (handles OA + Sci-Hub internally).
 
-        pdf_url = None
+    scihub-cli (https://github.com/Oxidane-bot/scihub-cli) is a maintained,
+    multi-source downloader with robust PDF extraction, mirror management,
+    and CAPTCHA handling. We shell out to it via uvx for zero local deps.
+    """
+    # Create a temp input file with the DOI
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as fh:
+        fh.write(doi + "\n")
+        input_file = fh.name
 
-        # Strategy 1: <iframe src="..." id="pdf">
-        m = re.search(r'<iframe[^>]*\s+src\s*=\s*["\']([^"\']+)["\']', html, re.IGNORECASE)
-        if m:
-            pdf_url = m.group(1)
-            if pdf_url.startswith("//"):
-                pdf_url = "https:" + pdf_url
+    # Use a temp output directory so scihub-cli can name files freely
+    tmp_out = Path(tempfile.mkdtemp(prefix="scihub_"))
 
-        # Strategy 2: <embed src="...">
-        if not pdf_url:
-            m = re.search(r'<embed[^>]*\s+src\s*=\s*["\']([^"\']+)["\']', html, re.IGNORECASE)
-            if m:
-                pdf_url = m.group(1)
-                if pdf_url.startswith("//"):
-                    pdf_url = "https:" + pdf_url
+    try:
+        cmd = [
+            "uvx", "--from", "git+https://github.com/Oxidane-bot/scihub-cli.git",
+            "scihub-cli", input_file,
+            "-o", str(tmp_out),
+            "--fast-fail",
+            "--no-academic-only",
+            "-p", "1",
+        ]
+        if email:
+            cmd.extend(["--email", email])
 
-        # Strategy 3: onclick location.href
-        if not pdf_url:
-            m = re.search(r"location\s*\.\s*href\s*=\s*['\"]([^'\"]+)", html, re.IGNORECASE)
-            if m:
-                pdf_url = m.group(1)
-                if pdf_url.startswith("//"):
-                    pdf_url = "https:" + pdf_url
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=180,
+        )
 
-        # Strategy 4: any .pdf URL in the page
-        if not pdf_url:
-            m = re.search(r'["\'](https?://[^"\']+\.pdf)["\']', html, re.IGNORECASE)
-            if m:
-                pdf_url = m.group(1)
+        if result.returncode != 0:
+            return None
 
-        if pdf_url and pdf_url.startswith("http"):
-            return {
-                "source": f"sci-hub.{mirror}",
-                "pdf_url": pdf_url,
-                "landing_page_url": url,
-                "license": None,
-                "version": "publisher",
-                "is_oa": False,
-                "host_type": "sci-hub-mirror",
-            }
-    return None
+        # Find the downloaded PDF in the temp directory
+        pdf_files = sorted(
+            tmp_out.glob("*.pdf"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if not pdf_files:
+            return None
+
+        pdf_path = pdf_files[0]
+
+        # Move to our desired output path
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(pdf_path), str(output_path))
+
+        return {
+            "source": "scihub-cli",
+            "pdf_url": None,
+            "landing_page_url": None,
+            "license": None,
+            "version": "publisher",
+            "is_oa": False,
+            "host_type": "scihub-cli",
+            "safe_url": True,
+            "download": {
+                "path": str(output_path),
+                "bytes": output_path.stat().st_size,
+                "sha256": hashlib.sha256(output_path.read_bytes()).hexdigest(),
+                "content_type": "application/pdf",
+            },
+        }
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+    finally:
+        Path(input_file).unlink(missing_ok=True)
+        shutil.rmtree(str(tmp_out), ignore_errors=True)
 
 
 # ── LibGen Sci-Mag candidates ─────────────────────────────────────────────
@@ -300,7 +315,7 @@ def main() -> int:
     parser.add_argument("--email", help="Contact email for polite API access and Unpaywall lookup")
     parser.add_argument("--download-dir", default="pdf")
     parser.add_argument("--no-download", action="store_true", help="Resolve candidates without downloading")
-    parser.add_argument("--no-scihub", action="store_true", help="Skip Sci-Hub mirror attempts")
+    parser.add_argument("--no-scihub", action="store_true", help="Skip scihub-cli download attempt")
     parser.add_argument("--no-libgen", action="store_true", help="Skip LibGen mirror attempts")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
@@ -333,10 +348,10 @@ def main() -> int:
         download = None
         selected_source = None
         selected_pdf_url = None
+        output_path = Path(args.download_dir) / _filename_from_doi(doi)
 
         # Try all safe OA candidates in order
         if safe_oa and not args.no_download:
-            output_path = Path(args.download_dir) / _filename_from_doi(doi)
             for candidate in safe_oa:
                 try:
                     download = _download_pdf(candidate["pdf_url"], output_path, args.email)
@@ -346,25 +361,19 @@ def main() -> int:
                 except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError):
                     continue
 
-        # 2 ── Sci-Hub mirror fallback ──
+        # 2 ── Sci-Hub (via scihub-cli) ──
         if not download and not args.no_download and not args.no_scihub:
-            scihub = _scihub_candidate(doi, args.email)
-            if scihub and scihub.get("pdf_url"):
-                output_path = Path(args.download_dir) / _filename_from_doi(doi)
-                try:
-                    download = _download_pdf(scihub["pdf_url"], output_path, args.email)
-                    selected_source = scihub["source"]
-                    selected_pdf_url = scihub["pdf_url"]
-                    scihub["safe_url"] = True
-                    oa_candidates.append(scihub)
-                except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError):
-                    pass
+            scihub = _scihub_cli_download(doi, output_path, args.email)
+            if scihub:
+                download = scihub.get("download")
+                selected_source = scihub["source"]
+                selected_pdf_url = scihub.get("pdf_url")
+                oa_candidates.append(scihub)
 
         # 3 ── LibGen mirror fallback ──
         if not download and not args.no_download and not args.no_libgen:
             libgen = _libgen_candidate(doi, args.email)
             if libgen and libgen.get("pdf_url"):
-                output_path = Path(args.download_dir) / _filename_from_doi(doi)
                 try:
                     download = _download_pdf(libgen["pdf_url"], output_path, args.email)
                     selected_source = libgen["source"]
@@ -383,7 +392,7 @@ def main() -> int:
             "source": selected_source,
             "selected_pdf_url": selected_pdf_url,
             "download": download,
-            "resolution_path": "OA → Sci-Hub → LibGen (first successful download wins)",
+            "resolution_path": "OA → scihub-cli → LibGen (first successful download wins)",
         }
         warnings = []
         if not oa_candidates:
