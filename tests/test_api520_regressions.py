@@ -49,9 +49,27 @@ def test_api520_gas_subcritical_example_si_equation_basis():
         Kb=1.0,
         Kc=1.0,
     )
-    assert res["regime"] == "subcritical"
+    assert res["regime"] == "subcritical-conventional-or-pilot"
     assert math.isclose(res["F2"], 0.8547632657974537, rel_tol=1e-12)
     assert math.isclose(res["required_orifice_area_mm2"], 4248.358775943481, rel_tol=1e-12)
+
+
+def test_api520_gas_subcritical_balanced_bellows_uses_kb_corrected_critical_equation():
+    res = api520_gas_relief_area(
+        mass_flow_kg_s=24270 / 3600,
+        T_K=313.2,
+        MW=51.0,
+        Z=1.0,
+        gamma=1.11,
+        P1_relieving_Pa=670e3,
+        Pb_Pa=532e3,
+        Kd=0.975,
+        Kb=0.88,
+        Kc=1.0,
+    )
+    assert res["regime"] == "subcritical-balanced-bellows-corrected"
+    assert res["F2"] is None
+    assert math.isclose(res["required_orifice_area_mm2"], 4203.461437140275, rel_tol=1e-12)
 
 
 def test_api520_liquid_equation_uses_api_si_units():
