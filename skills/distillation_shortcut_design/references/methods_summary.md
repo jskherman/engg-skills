@@ -4,7 +4,9 @@
 
 For a binary or pseudo-binary cut at total reflux:
 
-    N_min = log[(xD / (1 - xD)) * ((1 - xB) / xB)] / log(alpha)
+```text
+N_min = log[(xD / (1 - xD)) * ((1 - xB) / xB)] / log(alpha)
+```
 
 `alpha` is the geometric mean of top and bottom relative volatilities. The
 result includes the reboiler as an equilibrium stage. Assumes constant
@@ -12,23 +14,38 @@ result includes the reboiler as an equilibrium stage. Assumes constant
 
 ## Underwood (minimum reflux)
 
-Solve for `theta` in:
+With the feed thermal condition convention `q = 1` for saturated liquid and
+`q = 0` for saturated vapor, solve for `theta` in:
 
-    sum_i [ alpha_i * z_i / (alpha_i - theta) ] = 1 - q
+```text
+sum_i [ alpha_i * z_i / (alpha_i - theta) ] = q
+```
 
-with `alpha_HK < theta < alpha_LK`. Then:
+For an ordinary sharp split, the relevant root is usually between the heavy-key
+and light-key relative volatilities:
 
-    Rmin + 1 = sum_i [ alpha_i * xD_i / (alpha_i - theta) ]
+```text
+alpha_HK < theta < alpha_LK
+```
 
-`q` is the feed thermal condition (1.0 sat liquid, 0.0 sat vapor).
+Then:
+
+```text
+Rmin + 1 = sum_i [ alpha_i * xD_i / (alpha_i - theta) ]
+```
+
+Multiple roots can exist for distributed multicomponent splits; inspect the
+reported `theta` and split assumptions.
 
 ## Gilliland (actual stages)
 
 The Molokanov closed-form approximation:
 
-    X = (R - Rmin) / (R + 1)
-    Y = 1 - exp[ (1 + 54.4 X) / (11 + 117.2 X) * (X - 1) / sqrt(X) ]
-    N = (Nmin + Y) / (1 - Y)
+```text
+X = (R - Rmin) / (R + 1)
+Y = 1 - exp[ (1 + 54.4 X) / (11 + 117.2 X) * (X - 1) / sqrt(X) ]
+N = (Nmin + Y) / (1 - Y)
+```
 
 The Gilliland correlation is empirical; reported deviations are typically
 within ±10%.
@@ -36,6 +53,7 @@ within ±10%.
 ## McCabe-Thiele (binary, constant alpha)
 
 Operating lines:
+
 - Rectifying: `y = R/(R+1) * x + xD/(R+1)`
 - Stripping: passes through `(xB, xB)` and the intersection of the
   rectifying line with the q-line.
