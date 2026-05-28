@@ -66,7 +66,7 @@ Each skill gives an AI coding agent focused instructions, reusable Python CLI sc
 
 | Skill | Purpose |
 | --- | --- |
-| `literature-search-engineering` | Query-building helpers for OpenAlex / Crossref engineering literature search. |
+| `literature-search-engineering` | Reproducible scholarly search, open-access PDF retrieval, deduplication, and literature-review matrices. |
 
 ## Skill Structure
 
