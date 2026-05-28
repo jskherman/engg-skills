@@ -49,7 +49,8 @@ and `A` is mm^2.
 
 ## Gas / vapor — subcritical-flow branch
 
-Use this branch when `P2/P1 > r_crit`. Define:
+Use this branch for conventional or pilot-operated PRVs when `P2/P1 > r_crit`
+and `Kb = 1`. Define:
 
 ```text
 r = P2/P1
@@ -63,9 +64,11 @@ F2 = sqrt((k/(k - 1)) * r^(2/k) * (1 - r^((k - 1)/k))/(1 - r))
 A = 17.9 * W * sqrt(T*Z/(M*P1*(P1 - P2))) / (F2*Kd*Kc)
 ```
 
-For the subcritical equation implemented here, `Kb` is not applied. For balanced
-bellows or pilot-operated valves, check the standard, manufacturer data, and
-backpressure limits before relying on the result.
+For balanced-bellows gas/vapor sizing with a backpressure correction (`Kb != 1`),
+the implementation applies the Kb-corrected critical-flow equation when the
+actual backpressure exceeds the critical pressure. This follows the API example
+workflow for balanced-bellows gas/vapor service; vendor limits still govern final
+acceptance.
 
 ## Liquid branch
 
@@ -104,8 +107,8 @@ and emits a warning.
 
 - `Kd` is the effective coefficient of discharge. Use certified vendor data for
   final work.
-- `Kb` is a gas/vapor backpressure correction for the critical-flow branch.
-- `Kw` is the liquid backpressure correction.
+- `Kb` is the gas/vapor balanced-bellows backpressure correction.
+- `Kw` is the liquid balanced-bellows backpressure correction.
 - `Kc` accounts for a rupture disk installed upstream of the PRV when applicable.
 - `Kv` is the liquid viscosity correction.
 
