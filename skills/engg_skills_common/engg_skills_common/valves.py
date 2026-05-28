@@ -76,8 +76,11 @@ def gas_control_valve(
 # Critical ratio: Pcf/P1 = (2/(k + 1))^(k/(k - 1)).
 # Critical area: A = W*sqrt(T*Z/M)/(C*Kd*P1*Kb*Kc).
 # Gas C: C = 0.03948*sqrt(k*(2/(k + 1))^((k + 1)/(k - 1))).
-# Subcritical area: A = 17.9*W*sqrt(T*Z/(M*P1*(P1 - P2)))/(F2*Kd*Kc).
+# Conventional/pilot subcritical area: A = 17.9*W*sqrt(T*Z/(M*P1*(P1 - P2)))/(F2*Kd*Kc).
 # Subcritical F2, r = P2/P1: sqrt(k/(k - 1)*r^(2/k)*(1 - r^((k - 1)/k))/(1 - r)).
+# Balanced-bellows backpressure correction: when backpressure exceeds critical
+# pressure and a gas/vapor Kb != 1 is supplied, the helper applies Kb in the
+# critical-flow area equation rather than the conventional/pilot subcritical equation.
 
 
 def api520_gas_critical_pressure_ratio(gamma: float) -> float:
@@ -123,10 +126,9 @@ def api520_gas_relief_area(
     """API 520 Part I preliminary gas/vapor relief orifice area.
 
     Inputs are SI: kg/s, K, g/mol, and absolute Pa. Internally the function
-    converts to kg/h, kPa, K, kg/kmol, and mm^2. Critical flow uses the
-    critical-flow area equation. Subcritical flow uses the subcritical equation
-    for conventional and pilot-operated PRVs; for balanced-bellows subcritical
-    service, obtain correction factors from the manufacturer or standard.
+    converts to kg/h, kPa, K, kg/kmol, and mm^2. Use `Kb = 1` for conventional
+    and pilot-operated PRVs. Supply `Kb < 1` only when applying a balanced-
+    bellows backpressure correction from the standard/manufacturer.
     """
 
     if mass_flow_kg_s <= 0 or T_K <= 0 or MW <= 0 or Z <= 0:
@@ -142,16 +144,21 @@ def api520_gas_relief_area(
     P2_kPa = Pb_Pa / 1000.0
     pressure_ratio = P2_kPa / P1_kPa
     critical_ratio = api520_gas_critical_pressure_ratio(gamma)
+    C = api520_gas_coefficient_C(gamma)
+    F2 = None
     warnings: list[str] = []
 
     if pressure_ratio <= critical_ratio:
         regime = "critical"
-        C = api520_gas_coefficient_C(gamma)
         A_mm2 = W_kg_h / (C * Kd * P1_kPa * Kb * Kc) * math.sqrt(T_K * Z / MW)
         equation = "API 520 Part I 8th ed. gas/vapor critical-flow equation; C equation"
-        F2 = None
+    elif abs(Kb - 1.0) > 1e-12:
+        regime = "subcritical-balanced-bellows-corrected"
+        A_mm2 = W_kg_h / (C * Kd * P1_kPa * Kb * Kc) * math.sqrt(T_K * Z / MW)
+        equation = "API 520 Part I 8th ed. gas/vapor critical-flow equation with balanced-bellows Kb correction"
+        warnings.append("Subcritical backpressure ratio with Kb != 1: treated as balanced-bellows corrected critical-flow sizing.")
     else:
-        regime = "subcritical"
+        regime = "subcritical-conventional-or-pilot"
         F2 = api520_subcritical_F2(gamma, pressure_ratio)
         A_mm2 = (
             17.9
@@ -160,9 +167,6 @@ def api520_gas_relief_area(
             * math.sqrt(T_K * Z / (MW * P1_kPa * (P1_kPa - P2_kPa)))
         )
         equation = "API 520 Part I 8th ed. gas/vapor subcritical-flow equation; F2 equation"
-        C = None
-        if abs(Kb - 1.0) > 1e-12:
-            warnings.append("Kb is not used in the API 520 subcritical gas/vapor equation used here.")
 
     return {
         "method": "API-520-Part-I-8th-ed-gas-vapor",
@@ -190,7 +194,8 @@ def api520_gas_relief_area(
 
 
 # Relief liquid equation notes, API 520 Part I, 8th ed. SI basis:
-# Q L/min, P kPa(a), G1 liquid SG vs water at flowing temperature, A mm^2, mu cP.
+# Q L/min, P kPa(a), G1 liquid SG at flowing temperature referred to water at
+# standard conditions, A mm^2, mu cP.
 # Liquid area: A = 11.78*Q*sqrt(G1/(P1 - P2))/(Kd*Kw*Kc*Kv).
 # Viscosity correction: Kv = (0.9935 + 2.878/sqrt(Re) + 342.75/Re^1.5)^-1.
 # Re estimate for Kv correction: Re = 18800*Q*G1/(mu*sqrt(A)).
