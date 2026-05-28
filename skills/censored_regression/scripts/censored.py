@@ -3,12 +3,17 @@
 # requires-python = ">=3.11"
 # dependencies = ["numpy>=1.26", "scipy>=1.11", "pandas>=2.1"]
 # ///
-"""Censored (Tobit / censored lognormal) regression.
+"""Censored-normal / censored-lognormal regression.
 
-Implements the censored-normal likelihood by hand using SciPy's `minimize`
-so the script does not require statsmodels' Tobit class (which moves
-across versions). The likelihood handles left, right, and interval
-censoring.
+Implements a censored-normal likelihood using SciPy's `minimize`. With the
+log-response option enabled, the same likelihood is applied to log(y), giving a
+censored-lognormal model on the original response scale.
+
+Censoring-column semantics:
+- observed response value present: exact observation; censoring bounds ignored.
+- response missing + only `lower_col` finite: left-censored, y <= lower_col.
+- response missing + only `upper_col` finite: right-censored, y >= upper_col.
+- response missing + both bounds finite: interval-censored, lower_col < y < upper_col.
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ import argparse
 import math
 import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -38,8 +44,74 @@ SKILL_DIR = Path(__file__).resolve().parents[1]
 
 
 def _build_X(df: pd.DataFrame, predictors: list[str]) -> np.ndarray:
-    X = np.column_stack([np.ones(len(df))] + [df[col].astype(float).values for col in predictors])
-    return X
+    missing = [col for col in predictors if col not in df.columns]
+    if missing:
+        raise ValueError(f"predictor columns not found: {missing}")
+    return np.column_stack([np.ones(len(df))] + [df[col].astype(float).values for col in predictors])
+
+
+def _finite_or_nan(df: pd.DataFrame, column: str | None) -> np.ndarray:
+    return df[column].astype(float).values if column else np.full(len(df), np.nan)
+
+
+def _prepare_response_and_bounds(
+    df: pd.DataFrame,
+    *,
+    response: str,
+    lower_col: str | None,
+    upper_col: str | None,
+    log_response: bool,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str], dict[str, Any]]:
+    if response not in df.columns:
+        raise ValueError(f"response column not found: {response}")
+    for col in (lower_col, upper_col):
+        if col and col not in df.columns:
+            raise ValueError(f"censoring column not found: {col}")
+
+    y_raw = df[response].astype(float).values
+    lower = _finite_or_nan(df, lower_col)
+    upper = _finite_or_nan(df, upper_col)
+    observed = np.isfinite(y_raw)
+    has_lower = np.isfinite(lower)
+    has_upper = np.isfinite(upper)
+
+    kinds: list[str] = []
+    for i in range(len(df)):
+        if observed[i]:
+            kinds.append("obs")
+        elif has_lower[i] and has_upper[i]:
+            if lower[i] >= upper[i]:
+                raise ValueError("interval-censored rows require lower_col < upper_col")
+            kinds.append("interval")
+        elif has_lower[i]:
+            kinds.append("left")
+        elif has_upper[i]:
+            kinds.append("right")
+        else:
+            raise ValueError("missing response rows must have a censoring bound")
+
+    if log_response:
+        positive_observed = y_raw[observed]
+        positive_bounds = np.r_[lower[has_lower], upper[has_upper]]
+        if positive_observed.size and np.any(positive_observed <= 0):
+            raise ValueError("log-response model requires positive observed responses")
+        if positive_bounds.size and np.any(positive_bounds <= 0):
+            raise ValueError("log-response model requires positive censoring bounds")
+        y = np.where(observed, np.log(y_raw), np.nan)
+        lower_model = np.where(has_lower, np.log(lower), np.nan)
+        upper_model = np.where(has_upper, np.log(upper), np.nan)
+    else:
+        y = y_raw
+        lower_model = lower
+        upper_model = upper
+
+    counts = {
+        "n_observed": int(sum(k == "obs" for k in kinds)),
+        "n_left_censored": int(sum(k == "left" for k in kinds)),
+        "n_right_censored": int(sum(k == "right" for k in kinds)),
+        "n_interval_censored": int(sum(k == "interval" for k in kinds)),
+    }
+    return y, lower_model, upper_model, kinds, counts
 
 
 def _neg_log_lik(params, y, X, lower, upper, censoring_kind):
@@ -72,63 +144,52 @@ def fit(
     upper_col: str | None,
     log_response: bool = True,
 ) -> dict:
-    if log_response:
-        y_raw = df[response].astype(float).values
-        # observed: y_raw not NaN
-        observed_mask = ~np.isnan(y_raw)
-        # left-censored: response NaN, lower_col present
-        lower = df[lower_col].astype(float).values if lower_col else np.full(len(df), np.nan)
-        upper = df[upper_col].astype(float).values if upper_col else np.full(len(df), np.nan)
-        y = np.where(observed_mask, np.log(np.maximum(y_raw, 1e-300)), np.nan)
-        lower_log = np.where(~np.isnan(lower), np.log(np.maximum(lower, 1e-300)), np.nan)
-        upper_log = np.where(~np.isnan(upper), np.log(np.maximum(upper, 1e-300)), np.nan)
-    else:
-        y = df[response].astype(float).values
-        observed_mask = ~np.isnan(y)
-        lower_log = df[lower_col].astype(float).values if lower_col else np.full(len(df), np.nan)
-        upper_log = df[upper_col].astype(float).values if upper_col else np.full(len(df), np.nan)
-    kinds: list[str] = []
-    for i in range(len(df)):
-        if observed_mask[i]:
-            kinds.append("obs")
-        elif lower_col and upper_col and not np.isnan(lower_log[i]) and not np.isnan(upper_log[i]):
-            kinds.append("interval")
-        elif lower_col and not np.isnan(lower_log[i]) and (upper_col is None or np.isnan(upper_log[i])):
-            kinds.append("left")
-        elif upper_col and not np.isnan(upper_log[i]):
-            kinds.append("right")
-        else:
-            kinds.append("obs")  # treat as observed; user error otherwise
+    y, lower, upper, kinds, counts = _prepare_response_and_bounds(
+        df,
+        response=response,
+        lower_col=lower_col,
+        upper_col=upper_col,
+        log_response=log_response,
+    )
     X = _build_X(df, predictors)
+    if np.any(~np.isfinite(X)):
+        raise ValueError("predictor matrix contains NaN or infinite values")
+
+    observed_mask = np.array([k == "obs" for k in kinds], dtype=bool)
+    finite_initial_values = y[observed_mask]
+    if finite_initial_values.size == 0:
+        finite_initial_values = np.r_[lower[np.isfinite(lower)], upper[np.isfinite(upper)]]
     init = np.zeros(X.shape[1] + 1)
-    init[0] = np.nanmean(y[observed_mask]) if observed_mask.any() else 0.0
-    init[-1] = math.log(max(np.nanstd(y[observed_mask]) or 1.0, 1e-3))
+    init[0] = float(np.nanmean(finite_initial_values)) if finite_initial_values.size else 0.0
+    init[-1] = math.log(max(float(np.nanstd(finite_initial_values)) if finite_initial_values.size else 1.0, 1e-3))
+
     res = minimize(
         _neg_log_lik,
         init,
-        args=(y, X, lower_log, upper_log, kinds),
+        args=(y, X, lower, upper, kinds),
         method="L-BFGS-B",
     )
     n_beta = X.shape[1]
     beta = res.x[:n_beta].tolist()
     sigma = math.exp(res.x[-1])
     fraction_censored = float(np.mean([k != "obs" for k in kinds]))
+    method = "censored-lognormal-ML" if log_response else "censored-normal-ML"
     return {
-        "method": "censored-lognormal-ML",
+        "method": method,
         "coefficients": dict(zip(["intercept"] + predictors, beta)),
-        "sigma_log_response": sigma,
+        "sigma_model_scale": sigma,
+        "log_response": log_response,
         "neg_log_lik": float(res.fun),
         "converged": bool(res.success),
+        "optimizer_message": str(res.message),
         "fraction_censored": fraction_censored,
         "n_observations": int(len(df)),
-        "n_left_censored": int(sum(1 for k in kinds if k == "left")),
-        "n_right_censored": int(sum(1 for k in kinds if k == "right")),
-        "n_interval_censored": int(sum(1 for k in kinds if k == "interval")),
+        **counts,
     }
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Censored (Tobit) regression on log scale")
+    parser = argparse.ArgumentParser(description="Censored normal/lognormal regression")
     sub = parser.add_subparsers(dest="command", required=True)
     f = sub.add_parser("fit")
     f.add_argument("--data", required=True)
