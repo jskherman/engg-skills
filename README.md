@@ -56,7 +56,7 @@ Each skill gives an AI coding agent focused instructions, reusable Python CLI sc
 | `design_of_experiments` | Full factorial and two-level factorial DOE plans. |
 | `statistical_process_control` | Individuals (I-MR), X-bar / R, Cp / Cpk. |
 | `compositional_data_analysis` | clr / alr / ilr log-ratio transforms, sequential binary partitions, heavy-end balances. |
-| `censored_regression` | Censored-lognormal maximum likelihood (Tobit) for below-LOQ lab data. |
+| `censored_regression` | Censored-lognormal maximum likelihood for below-LOQ lab data. |
 | `distributed_lag_models` | Penalised finite-impulse-response distributed-lag regression with placebo test. |
 | `process_causal_inference_dags` | DAG construction, d-separation, back-door adjustment set enumeration, DOT export. |
 | `bayesian_hierarchical_process_models` | PyMC hierarchical regression with censoring and AR(1) residuals. |
@@ -70,16 +70,34 @@ Each skill gives an AI coding agent focused instructions, reusable Python CLI sc
 
 ## Skill Structure
 
-Skills live under `skills/<skill_folder>/` and use this convention:
+Source skills live under `skills/<source_folder>/`:
 
 ```text
-skills/<skill_folder>/
+skills/<source_folder>/
   SKILL.md
   scripts/       # optional Python CLIs, run with uv
   references/    # optional equations, assumptions, examples, and source notes
 ```
 
-Every `SKILL.md` starts with YAML frontmatter containing `name` and a description in the form `<one sentence what the skill does>. Use when <scenarios>. Don't use for <complementary scope>`. Utility scripts use `argparse`, require `--output` for JSON results, write the result envelope from `engg_skills_common.io.result_envelope`, and keep stdout to a short success message. Scripts that reference third-party libraries or engineering standards call `engg_skills_common.notices.write_license_notification` on first invocation to drop a one-time `LICENSE_NOTIFICATION.txt` in the skill directory (gitignored runtime artifact).
+The source tree keeps historical underscore folder names where needed for scripts and tests. For AgentSkills-compatible installation, generate a normalized export tree:
+
+```bash
+uv run tools/export_agent_skills.py
+uv run tools/validate_hermes_skills.py dist/agent-skills --strict-directory-match
+```
+
+The generated tree uses hyphenated skill folders whose parent directory matches each `name` field:
+
+```text
+dist/agent-skills/<skill-name>/
+  SKILL.md
+  scripts/
+  references/
+```
+
+Every exported `SKILL.md` has YAML frontmatter with AgentSkills-compatible `name` and `description`, plus `license`, `compatibility`, `version`, and `metadata.hermes` for Hermes. The exporter also normalizes body section names to the Hermes-oriented `When to Use`, `Procedure`, `Pitfalls`, and `Verification` structure.
+
+Utility scripts use `argparse`, require `--output` for JSON results, write the result envelope from `engg_skills_common.io.result_envelope`, and keep stdout to a short success message. Scripts that reference third-party libraries or engineering standards call `engg_skills_common.notices.write_license_notification` on first invocation to drop a one-time `LICENSE_NOTIFICATION.txt` in the skill directory (gitignored runtime artifact).
 
 ## Quick Start
 
@@ -102,7 +120,7 @@ uv run skills/pipe_flow_pressure_drop/scripts/pipe_pressure_drop.py \
   --output /tmp/pipe_drop.json
 ```
 
-Heavy-dependency skills (e.g. `bayesian_hierarchical_process_models` uses `pymc`) declare their dependencies inline in the script's PEP-723 header; the first `uv run` will install them (and may take a few minutes for the Bayesian skill).
+Heavy-dependency skills (e.g. `bayesian_hierarchical_process_models` uses `pymc`) declare their dependencies inline in the script's PEP-723 header; the first `uv run` will install them and may take a few minutes for the Bayesian skill.
 
 ## Safety Scope
 
