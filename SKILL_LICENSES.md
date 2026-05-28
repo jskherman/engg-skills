@@ -59,7 +59,7 @@ Each script in this repository also writes a `LICENSE_NOTIFICATION.txt` file int
 
 | Skill | Source or terms notes |
 | --- | --- |
-| `literature-search-engineering` | Builds URLs/reminders for public search services. Check each service's API terms before making requests: OpenAlex (https://docs.openalex.org/), Crossref (https://api.crossref.org/), and others. |
+| `literature-search-engineering` | Builds reproducible search, DOI lookup, OA-PDF retrieval, and review-matrix outputs for public scholarly services. Check each service's API and content terms before making requests: OpenAlex (https://docs.openalex.org/), Crossref (https://api.crossref.org/), arXiv (https://info.arxiv.org/help/api/user-manual.html), Semantic Scholar (https://api.semanticscholar.org/api-docs/graph), CORE (https://api.core.ac.uk/docs/v3), Unpaywall (https://unpaywall.org/products/api), publisher landing pages, and institutional repositories. The skill refuses Sci-Hub/LibGen-style access-control bypass workflows. |
 
 ## Standards Referenced (Not Reproduced)
 
