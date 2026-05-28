@@ -55,56 +55,77 @@ def underwood_min_reflux(
 ) -> dict[str, Any]:
     """Underwood minimum reflux for a multicomponent column.
 
+    Equation convention used here:
+
+        sum_i alpha_i*z_i/(alpha_i - theta) = q
+        Rmin + 1 = sum_i alpha_i*xD_i/(alpha_i - theta)
+
     `alphas` are component relative volatilities relative to the heaviest key.
-    `q` is the thermal condition of the feed (q=1 saturated liquid, q=0 sat vapor).
-    The Underwood theta is bracketed between consecutive alphas; the function
-    bisects on the first interval containing a root and computes Rmin from the
-    accepted theta.
+    `q` is the feed thermal condition (q=1 saturated liquid, q=0 saturated vapor).
+    Candidate roots are searched between adjacent unique alpha values; the valid
+    root for ordinary sharp LK/HK splits is typically between alpha_HK and alpha_LK.
     """
 
     if not (len(alphas) == len(feed_zs) == len(distillate_xs)):
         raise ValueError("alphas, feed_zs, distillate_xs must align")
+    if any(a <= 0 for a in alphas):
+        raise ValueError("all relative volatilities must be positive")
+    if any(z < 0 for z in feed_zs) or any(x < 0 for x in distillate_xs):
+        raise ValueError("compositions cannot be negative")
     if abs(sum(feed_zs) - 1) > 1e-6 or abs(sum(distillate_xs) - 1) > 1e-6:
         raise ValueError("compositions must sum to 1")
 
     def g(theta: float) -> float:
-        return sum(a * z / (a - theta) for a, z in zip(alphas, feed_zs)) - (1 - q)
+        return sum(a * z / (a - theta) for a, z in zip(alphas, feed_zs)) - q
 
+    candidate_roots: list[float] = []
     pairs = sorted(set(alphas))
-    theta = None
     for i in range(len(pairs) - 1):
-        lo = pairs[i] + 1e-6
-        hi = pairs[i + 1] - 1e-6
+        lo = pairs[i] + 1e-9 * max(1.0, abs(pairs[i]))
+        hi = pairs[i + 1] - 1e-9 * max(1.0, abs(pairs[i + 1]))
         if lo >= hi:
             continue
         try:
             f_lo, f_hi = g(lo), g(hi)
         except ZeroDivisionError:
             continue
+        if not (math.isfinite(f_lo) and math.isfinite(f_hi)):
+            continue
         if f_lo * f_hi > 0:
             continue
         a, b = lo, hi
+        fa = f_lo
         for _ in range(200):
             m = 0.5 * (a + b)
             fm = g(m)
-            if abs(fm) < 1e-9 or (b - a) < 1e-12:
+            if abs(fm) < 1e-10 or (b - a) < 1e-12:
                 break
-            if f_lo * fm < 0:
+            if fa * fm <= 0:
                 b = m
             else:
-                a, f_lo = m, fm
-        theta = 0.5 * (a + b)
-        break
-    if theta is None:
-        raise RuntimeError("Underwood theta not bracketed; check alpha ordering / feed quality.")
-    Rmin_plus_1 = sum(a * xD / (a - theta) for a, xD in zip(alphas, distillate_xs))
-    Rmin = Rmin_plus_1 - 1
+                a, fa = m, fm
+        candidate_roots.append(0.5 * (a + b))
+
+    feasible: list[tuple[float, float]] = []
+    for theta in candidate_roots:
+        denom_terms = [a - theta for a in alphas]
+        if any(abs(d) < 1e-12 for d in denom_terms):
+            continue
+        Rmin_plus_1 = sum(a * xD / (a - theta) for a, xD in zip(alphas, distillate_xs))
+        Rmin = Rmin_plus_1 - 1.0
+        if math.isfinite(Rmin) and Rmin >= 0:
+            feasible.append((theta, Rmin))
+
+    if not feasible:
+        raise RuntimeError("Underwood theta not bracketed or no non-negative Rmin root found; check alpha ordering, split, and q.")
+    theta, Rmin = feasible[0]
     return {
         "method": "Underwood",
         "theta": theta,
         "Rmin": Rmin,
         "q": q,
         "alphas": list(alphas),
+        "candidate_thetas": candidate_roots,
     }
 
 
@@ -136,8 +157,8 @@ def kremser(*, N: float, A: float, x_in: float, y_in: float, K: float) -> dict[s
     feed composition entering. Returns predicted lean-gas exit composition `y_out`.
     """
 
-    if N <= 0 or K <= 0:
-        raise ValueError("N and K must be positive")
+    if N <= 0 or A <= 0 or K <= 0:
+        raise ValueError("N, A, and K must be positive")
     if abs(A - 1) < 1e-6:
         eta = N / (N + 1)
     else:
