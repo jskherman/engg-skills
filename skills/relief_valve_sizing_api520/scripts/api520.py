@@ -48,7 +48,6 @@ def build_parser() -> argparse.ArgumentParser:
     l.add_argument("--Kw", type=float, default=1.0)
     l.add_argument("--Kc", type=float, default=1.0)
     l.add_argument("--Kv", type=float, default=1.0)
-    l.add_argument("--Kp", type=float, default=1.0)
     l.add_argument("--mu", type=float, default=None, dest="mu_Pa_s", help="Optional viscosity, Pa*s, for API 520 Kv correction")
     l.add_argument(
         "--selected-area",
